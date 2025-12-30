@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: linear-gradient(180deg, #2d1b4e 0%, #1a0a2e 30%, #0d0620 70%, #0a0415 100%);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -20%;
+  left: -30%;
+  width: 80%;
+  height: 60%;
+  background: radial-gradient(ellipse, rgba(236, 72, 153, 0.15) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  top: -10%;
+  right: -30%;
+  width: 70%;
+  height: 50%;
+  background: radial-gradient(ellipse, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.wheel-spin {
+  transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+}
+
+.glow-effect {
+  box-shadow: 0 0 20px rgba(106, 0, 255, 0.5), 0 0 40px rgba(30, 144, 255, 0.3);
+}
+
+.spin-button-gradient {
+  background: linear-gradient(90deg, #8B5CF6 0%, #EC4899 50%, #8B5CF6 100%);
+}
+
+.prize-card {
+  background: linear-gradient(180deg, rgba(30, 20, 50, 0.8) 0%, rgba(15, 10, 30, 0.9) 100%);
+}
+
+.pink-glow {
+  position: fixed;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Liquid Glass Effect */
+.liquid-glass {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-glass::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -50%;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.03) 45%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.03) 55%,
+    transparent 100%
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+
+.liquid-glass-item {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+}
+
+.liquid-glass-item:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+}
+
+.liquid-glass-item:last-child {
+  border-bottom: none;
+}
+
+
+/* Memory Game Card Flip */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Animation for win modal */
+@keyframes zoom-in-95 {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-in {
+  animation: zoom-in-95 0.3s ease-out;
+}
+
+/* Memory card hover effect */
+.perspective-1000:hover {
+  transform: scale(1.05);
+  transition: transform 0.2s ease;
+}
