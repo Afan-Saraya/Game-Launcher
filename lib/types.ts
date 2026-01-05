@@ -27,6 +27,7 @@ export interface WheelProps {
   prizes: Prize[];
   rotation: number;
   isSpinning: boolean;
+  size?: 'normal' | 'large';
 }
 
 export interface SpinButtonProps {

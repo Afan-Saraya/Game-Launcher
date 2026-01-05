@@ -3,26 +3,39 @@
 import { WheelProps } from '@/lib/types';
 import iconMap from '@/components/shared/IconMap';
 
-export default function Wheel({ prizes, rotation, isSpinning }: WheelProps) {
+interface ExtendedWheelProps extends WheelProps {
+  size?: 'normal' | 'large';
+}
+
+export default function Wheel({ prizes, rotation, isSpinning, size = 'normal' }: ExtendedWheelProps) {
+  const isLarge = size === 'large';
+  
+  // Size configurations
+  const containerHeight = isLarge ? 'h-[320px]' : 'h-[220px]';
+  const outerRingSize = isLarge ? 'w-[600px] h-[600px]' : 'w-[115vw] h-[115vw] max-w-[470px] max-h-[470px]';
+  const innerBorderSize = isLarge ? 'w-[588px] h-[588px]' : 'w-[112vw] h-[112vw] max-w-[460px] max-h-[460px]';
+  const wheelSize = isLarge ? 'w-[580px] h-[580px]' : 'w-[110vw] h-[110vw] max-w-[450px] max-h-[450px]';
+  const outerTop = isLarge ? 'top-[16px]' : 'top-[12px]';
+  const innerTop = isLarge ? 'top-[22px]' : 'top-[18px]';
+  const wheelTop = isLarge ? 'top-[26px]' : 'top-[20px]';
+
   return (
     <div className="relative w-full my-6">
       {/* Pointer at top - Casino style */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20">
         <div className="relative">
-          <div className="w-0 h-0 border-l-[16px] border-r-[16px] border-t-[28px] border-l-transparent border-r-transparent border-t-yellow-400 drop-shadow-lg" />
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[12px] border-r-[12px] border-t-[22px] border-l-transparent border-r-transparent border-t-yellow-300" />
+          <div className={`w-0 h-0 border-l-transparent border-r-transparent border-t-yellow-400 drop-shadow-lg ${isLarge ? 'border-l-[20px] border-r-[20px] border-t-[36px]' : 'border-l-[16px] border-r-[16px] border-t-[28px]'}`} />
+          <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-transparent border-r-transparent border-t-yellow-300 ${isLarge ? 'border-l-[15px] border-r-[15px] border-t-[28px]' : 'border-l-[12px] border-r-[12px] border-t-[22px]'}`} />
         </div>
       </div>
 
-      {/* Wheel container - shows only top arc, full width */}
-      <div className="relative w-full h-[220px] overflow-hidden">
+      {/* Wheel container - shows only top arc */}
+      <div className={`relative w-full ${containerHeight} overflow-hidden`}>
         {/* Outer decorative ring */}
         <div 
-          className="absolute w-[115vw] h-[115vw] left-1/2 top-[12px] rounded-full"
+          className={`absolute ${outerRingSize} left-1/2 ${outerTop} rounded-full`}
           style={{ 
             transform: 'translateX(-50%)',
-            maxWidth: '470px',
-            maxHeight: '470px',
             background: 'linear-gradient(135deg, #FFD700 0%, #B8860B 25%, #FFD700 50%, #B8860B 75%, #FFD700 100%)',
             boxShadow: '0 0 30px rgba(255, 215, 0, 0.4), inset 0 0 20px rgba(0,0,0,0.3)',
           }}
@@ -30,23 +43,19 @@ export default function Wheel({ prizes, rotation, isSpinning }: WheelProps) {
         
         {/* Inner border ring */}
         <div 
-          className="absolute w-[112vw] h-[112vw] left-1/2 top-[18px] rounded-full"
+          className={`absolute ${innerBorderSize} left-1/2 ${innerTop} rounded-full`}
           style={{ 
             transform: 'translateX(-50%)',
-            maxWidth: '460px',
-            maxHeight: '460px',
             background: 'linear-gradient(180deg, #2a1f4e 0%, #0d0620 100%)',
             boxShadow: 'inset 0 0 15px rgba(0,0,0,0.5)',
           }}
         />
 
         <div 
-          className="absolute w-[110vw] h-[110vw] left-1/2 top-[20px] rounded-full overflow-hidden"
+          className={`absolute ${wheelSize} left-1/2 ${wheelTop} rounded-full overflow-hidden`}
           style={{ 
             transform: `translateX(-50%) rotate(${rotation}deg)`,
             transition: isSpinning ? 'transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'none',
-            maxWidth: '450px',
-            maxHeight: '450px',
             boxShadow: 'inset 0 0 30px rgba(0,0,0,0.4)',
           }}
         >
@@ -92,7 +101,7 @@ export default function Wheel({ prizes, rotation, isSpinning }: WheelProps) {
               const divX = 250 + 245 * Math.cos(startRad);
               const divY = 250 + 245 * Math.sin(startRad);
               
-              // Icon position - moved slightly outward
+              // Icon position
               const midAngle = (startAngle + endAngle) / 2;
               const midRad = (midAngle * Math.PI) / 180;
               const iconX = 250 + 155 * Math.cos(midRad);
@@ -145,8 +154,8 @@ export default function Wheel({ prizes, rotation, isSpinning }: WheelProps) {
       {/* Bottom pointer/indicator */}
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20">
         <div className="relative">
-          <div className="w-0 h-0 border-l-[14px] border-r-[14px] border-b-[24px] border-l-transparent border-r-transparent border-b-yellow-400 drop-shadow-lg" />
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-r-[10px] border-b-[18px] border-l-transparent border-r-transparent border-b-yellow-300" />
+          <div className={`w-0 h-0 border-l-transparent border-r-transparent border-b-yellow-400 drop-shadow-lg ${isLarge ? 'border-l-[18px] border-r-[18px] border-b-[30px]' : 'border-l-[14px] border-r-[14px] border-b-[24px]'}`} />
+          <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-transparent border-r-transparent border-b-yellow-300 ${isLarge ? 'border-l-[13px] border-r-[13px] border-b-[22px]' : 'border-l-[10px] border-r-[10px] border-b-[18px]'}`} />
         </div>
       </div>
     </div>

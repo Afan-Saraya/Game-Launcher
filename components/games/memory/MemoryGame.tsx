@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, RotateCcw, Trophy, Coins, Sparkles, Clock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Trophy, Coins, Sparkles, Clock, AlertTriangle, Target, Brain } from 'lucide-react';
 import MemoryCard from './MemoryCard';
 import WinModal from './WinModal';
 import LoseModal from './LoseModal';
+import LoadingScreen from '@/components/shared/LoadingScreen';
 import { MemoryConfigDb, fetchMemoryCards, MemoryCardDb } from '@/lib/supabase';
 
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -24,7 +25,6 @@ interface Card {
   isMatched: boolean;
 }
 
-// Fallback icons if no cards in database
 const FALLBACK_ICONS = [
   '🎮', '🎯', '🎪', '🎨', '🎭', '🎬', '🎤', '🎧',
   '🎹', '🎸', '🎺', '🎻', '🥁', '🎲', '🎰', '🏆',
@@ -43,7 +43,6 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 function generateCards(pairs: number, cardImages: string[]): Card[] {
-  // Use card images from DB, or fallback to emojis
   const availableIcons = cardImages.length >= pairs ? cardImages : FALLBACK_ICONS;
   const selectedIcons = shuffleArray(availableIcons).slice(0, pairs);
   const cards: Card[] = [];
@@ -77,12 +76,11 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
   const [showLoseModal, setShowLoseModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch cards from database on mount
   useEffect(() => {
     const loadCards = async () => {
       setIsLoading(true);
       try {
-        const dbCards = await fetchMemoryCards(true); // Featured only
+        const dbCards = await fetchMemoryCards(true);
         const images = dbCards.map((c: MemoryCardDb) => c.image_url);
         setCardImages(images);
         setCards(generateCards(pairs, images));
@@ -95,7 +93,6 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
     loadCards();
   }, [pairs]);
 
-  // Preview countdown
   useEffect(() => {
     if (!isPreviewPhase || isLoading) return;
     
@@ -109,7 +106,6 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
     }
   }, [previewCountdown, isPreviewPhase, isLoading]);
 
-  // Game timer
   useEffect(() => {
     if (isPreviewPhase || isWon || isLost || isLoading) return;
     
@@ -123,7 +119,6 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
     }
   }, [timeRemaining, isPreviewPhase, isWon, isLost, isLoading]);
 
-  // Check for match
   useEffect(() => {
     if (flippedCards.length === 2) {
       setIsLocked(true);
@@ -153,7 +148,6 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
     }
   }, [flippedCards, cards]);
 
-  // Check for win
   useEffect(() => {
     if (matches === pairs && !isWon && !isPreviewPhase) {
       setIsWon(true);
@@ -195,9 +189,9 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
 
   const difficultyLabel = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
   const difficultyColor = { easy: 'text-green-400', medium: 'text-yellow-400', hard: 'text-red-400' }[difficulty];
+  const difficultyBg = { easy: 'from-green-500 to-emerald-600', medium: 'from-yellow-500 to-orange-600', hard: 'from-red-500 to-pink-600' }[difficulty];
   const isLowTime = timeRemaining <= 10 && !isPreviewPhase;
   
-  // Dynamic card sizing based on grid and screen
   const getCardSize = () => {
     if (config.grid_cols >= 6) return 'sm';
     if (config.grid_cols >= 5) return 'md';
@@ -205,7 +199,6 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
   };
   const cardSize = getCardSize();
   
-  // Calculate max width for grid to use more space
   const getGridMaxWidth = () => {
     if (config.grid_cols >= 6) return '100%';
     if (config.grid_cols >= 5) return '95%';
@@ -213,91 +206,204 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
   };
 
   if (isLoading) {
-    return (
-      <main className="h-[100dvh] flex flex-col items-center justify-center px-4">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white/70">Loading cards...</p>
-        </div>
-      </main>
-    );
+    return <LoadingScreen message="Loading cards..." />;
   }
 
   return (
-    <main className="h-[100dvh] flex flex-col items-center px-3 py-3 overflow-hidden">
-      <div className="w-full max-w-[500px] flex flex-col h-full">
-        <header className="flex items-center justify-between w-full mb-2 flex-shrink-0">
-          <button onClick={onBack} className="text-white/70 p-2 hover:bg-white/5 rounded-lg transition-colors border border-white/10">
-            <ArrowLeft size={20} />
-          </button>
-          <div className="text-center">
-            <h1 className="text-base font-bold text-white">Memory Match</h1>
-            <span className={`text-xs font-medium ${difficultyColor}`}>{difficultyLabel}</span>
-          </div>
-          <button onClick={handleRestart} className="text-white/70 p-2 hover:bg-white/5 rounded-lg transition-colors border border-white/10">
-            <RotateCcw size={20} />
-          </button>
-        </header>
+    <>
+      {/* Mobile Layout */}
+      <main className="lg:hidden h-[100dvh] flex flex-col items-center px-3 py-3 overflow-hidden">
+        <div className="w-full max-w-[500px] flex flex-col h-full">
+          <header className="flex items-center justify-between w-full mb-2 flex-shrink-0">
+            <button onClick={onBack} className="text-white/70 p-2 hover:bg-white/5 rounded-lg transition-colors border border-white/10">
+              <ArrowLeft size={20} />
+            </button>
+            <div className="text-center">
+              <h1 className="text-base font-bold text-white">Memory Match</h1>
+              <span className={`text-xs font-medium ${difficultyColor}`}>{difficultyLabel}</span>
+            </div>
+            <button onClick={handleRestart} className="text-white/70 p-2 hover:bg-white/5 rounded-lg transition-colors border border-white/10">
+              <RotateCcw size={20} />
+            </button>
+          </header>
 
-        {isPreviewPhase && (
-          <div className="text-center mb-2 flex-shrink-0">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/30">
-              <span className="text-purple-400 font-medium text-sm">Memorize!</span>
-              <span className="text-white font-bold text-lg">{previewCountdown}</span>
+          {isPreviewPhase && (
+            <div className="text-center mb-2 flex-shrink-0">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/30">
+                <span className="text-purple-400 font-medium text-sm">Memorize!</span>
+                <span className="text-white font-bold text-lg">{previewCountdown}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-center gap-2 mb-3 flex-shrink-0">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
+              <Trophy size={14} className="text-yellow-400" />
+              <span className="text-white font-medium text-sm">{matches}/{pairs}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
+              <span className="text-white/60 text-xs">Moves:</span>
+              <span className="text-white font-medium text-sm">{moves}</span>
+            </div>
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${isLowTime ? 'bg-red-500/20 border-red-500/30 animate-pulse' : 'bg-white/5 border-white/10'}`}>
+              {isLowTime ? <AlertTriangle size={14} className="text-red-400" /> : <Clock size={14} className="text-purple-400" />}
+              <span className={`font-bold text-sm ${isLowTime ? 'text-red-400' : 'text-white'}`}>{formatTime(timeRemaining)}</span>
             </div>
           </div>
-        )}
 
-        <div className="flex items-center justify-center gap-2 mb-3 flex-shrink-0">
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
-            <Trophy size={14} className="text-yellow-400" />
-            <span className="text-white font-medium text-sm">{matches}/{pairs}</span>
+          <div className="flex-1 flex items-center justify-center min-h-0">
+            <div
+              className="grid gap-1 w-full"
+              style={{
+                gridTemplateColumns: `repeat(${config.grid_cols}, 1fr)`,
+                maxWidth: getGridMaxWidth(),
+                aspectRatio: `${config.grid_cols} / ${config.grid_rows}`,
+              }}
+            >
+              {cards.map(card => (
+                <MemoryCard
+                  key={card.id}
+                  icon={card.icon}
+                  isFlipped={card.isFlipped}
+                  isMatched={card.isMatched}
+                  onClick={() => handleCardClick(card.id)}
+                  size={cardSize}
+                  disabled={isPreviewPhase}
+                />
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
-            <span className="text-white/60 text-xs">Moves:</span>
-            <span className="text-white font-medium text-sm">{moves}</span>
-          </div>
-          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${isLowTime ? 'bg-red-500/20 border-red-500/30 animate-pulse' : 'bg-white/5 border-white/10'}`}>
-            {isLowTime ? <AlertTriangle size={14} className="text-red-400" /> : <Clock size={14} className="text-purple-400" />}
-            <span className={`font-bold text-sm ${isLowTime ? 'text-red-400' : 'text-white'}`}>{formatTime(timeRemaining)}</span>
+
+          <div className="mt-2 flex items-center justify-center gap-4 flex-shrink-0 pb-2">
+            <div className="flex items-center gap-1.5 text-white/50 text-xs">
+              <Coins size={12} className="text-yellow-400" />
+              <span>Win: +{rewards.coins}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-white/50 text-xs">
+              <Sparkles size={12} className="text-cyan-400" />
+              <span>Win: +{rewards.xp} XP</span>
+            </div>
           </div>
         </div>
+      </main>
 
-        {/* Game Grid - Takes available space */}
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div
-            className="grid gap-1 w-full"
-            style={{
-              gridTemplateColumns: `repeat(${config.grid_cols}, 1fr)`,
-              maxWidth: getGridMaxWidth(),
-              aspectRatio: `${config.grid_cols} / ${config.grid_rows}`,
-            }}
-          >
-            {cards.map(card => (
-              <MemoryCard
-                key={card.id}
-                icon={card.icon}
-                isFlipped={card.isFlipped}
-                isMatched={card.isMatched}
-                onClick={() => handleCardClick(card.id)}
-                size={cardSize}
-                disabled={isPreviewPhase}
-              />
-            ))}
+      {/* Desktop Layout */}
+      <main className="hidden lg:flex min-h-screen flex-col items-center px-8 py-6">
+        <div className="w-full max-w-6xl flex flex-col">
+          {/* Header */}
+          <header className="flex items-center justify-between w-full mb-8">
+            <button onClick={onBack} className="flex items-center gap-2 text-white/70 px-4 py-2 hover:bg-white/5 rounded-lg transition-colors border border-white/10">
+              <ArrowLeft size={20} />
+              <span>Back</span>
+            </button>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${difficultyBg} flex items-center justify-center`}>
+                <Brain size={20} className="text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-white">Memory Match</h1>
+                <span className={`text-sm font-medium ${difficultyColor}`}>{difficultyLabel} Mode</span>
+              </div>
+            </div>
+            <button onClick={handleRestart} className="flex items-center gap-2 text-white/70 px-4 py-2 hover:bg-white/5 rounded-lg transition-colors border border-white/10">
+              <RotateCcw size={20} />
+              <span>Restart</span>
+            </button>
+          </header>
+
+          <div className="flex gap-8">
+            {/* Left Side - Stats Panel */}
+            <div className="w-[280px] flex-shrink-0 space-y-4">
+              {/* Timer Card */}
+              <div className={`p-6 rounded-2xl border ${isLowTime ? 'bg-red-500/10 border-red-500/30' : 'bg-white/5 border-white/10'}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  {isLowTime ? <AlertTriangle size={24} className="text-red-400" /> : <Clock size={24} className="text-purple-400" />}
+                  <span className="text-white/60">Time Remaining</span>
+                </div>
+                <p className={`text-5xl font-bold ${isLowTime ? 'text-red-400 animate-pulse' : 'text-white'}`}>
+                  {formatTime(timeRemaining)}
+                </p>
+              </div>
+
+              {/* Preview Countdown */}
+              {isPreviewPhase && (
+                <div className="p-6 rounded-2xl bg-purple-500/20 border border-purple-500/30 text-center">
+                  <p className="text-purple-400 font-medium mb-2">Memorize the cards!</p>
+                  <p className="text-6xl font-bold text-white">{previewCountdown}</p>
+                </div>
+              )}
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                  <Trophy size={24} className="text-yellow-400 mx-auto mb-2" />
+                  <p className="text-2xl font-bold text-white">{matches}/{pairs}</p>
+                  <p className="text-white/50 text-sm">Matches</p>
+                </div>
+                <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                  <Target size={24} className="text-purple-400 mx-auto mb-2" />
+                  <p className="text-2xl font-bold text-white">{moves}</p>
+                  <p className="text-white/50 text-sm">Moves</p>
+                </div>
+              </div>
+
+              {/* Rewards */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20">
+                <p className="text-white/60 text-sm mb-3">Win Rewards</p>
+                <div className="flex items-center justify-around">
+                  <div className="flex items-center gap-2">
+                    <Coins size={20} className="text-yellow-400" />
+                    <span className="text-yellow-400 font-bold text-lg">+{rewards.coins}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={20} className="text-cyan-400" />
+                    <span className="text-cyan-400 font-bold text-lg">+{rewards.xp} XP</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-white/60 text-sm">Progress</span>
+                  <span className="text-white font-medium">{Math.round((matches / pairs) * 100)}%</span>
+                </div>
+                <div className="h-3 bg-white/10 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(matches / pairs) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side - Game Grid */}
+            <div className="flex-1 flex items-center justify-center">
+              <div
+                className="grid gap-2"
+                style={{
+                  gridTemplateColumns: `repeat(${config.grid_cols}, 1fr)`,
+                  width: '100%',
+                  maxWidth: '700px',
+                  aspectRatio: `${config.grid_cols} / ${config.grid_rows}`,
+                }}
+              >
+                {cards.map(card => (
+                  <MemoryCard
+                    key={card.id}
+                    icon={card.icon}
+                    isFlipped={card.isFlipped}
+                    isMatched={card.isMatched}
+                    onClick={() => handleCardClick(card.id)}
+                    size="lg"
+                    disabled={isPreviewPhase}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-
-        <div className="mt-2 flex items-center justify-center gap-4 flex-shrink-0 pb-2">
-          <div className="flex items-center gap-1.5 text-white/50 text-xs">
-            <Coins size={12} className="text-yellow-400" />
-            <span>Win: +{rewards.coins}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-white/50 text-xs">
-            <Sparkles size={12} className="text-cyan-400" />
-            <span>Win: +{rewards.xp} XP</span>
-          </div>
-        </div>
-      </div>
+      </main>
 
       <WinModal
         isOpen={showWinModal}
@@ -328,6 +434,6 @@ export default function MemoryGame({ difficulty, config, onBack, userName, userI
         userName={userName}
         timeSeconds={timeLimit}
       />
-    </main>
+    </>
   );
 }

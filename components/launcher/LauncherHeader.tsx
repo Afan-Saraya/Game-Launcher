@@ -173,17 +173,17 @@ export default function LauncherHeader() {
                     <p className="text-white/40 text-xs">Match pairs to win</p>
                   </div>
                 </a>
+                <a href="/puzzle" className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors group">
+                  <span className="text-2xl">🧩</span>
+                  <div>
+                    <p className="text-white font-medium group-hover:text-purple-400 transition-colors">Puzzle Challenge</p>
+                    <p className="text-white/40 text-xs">Piece together images</p>
+                  </div>
+                </a>
                 <div className="flex items-center gap-3 p-3 rounded-xl opacity-50 cursor-not-allowed">
                   <span className="text-2xl">🎰</span>
                   <div>
                     <p className="text-white font-medium">Lucky Slots</p>
-                    <p className="text-white/40 text-xs">Coming soon</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 rounded-xl opacity-50 cursor-not-allowed">
-                  <span className="text-2xl">🎫</span>
-                  <div>
-                    <p className="text-white font-medium">Scratch Cards</p>
                     <p className="text-white/40 text-xs">Coming soon</p>
                   </div>
                 </div>
