@@ -144,7 +144,6 @@ export default function WheelGame() {
       <div className="w-full lg:hidden">
         <div className="w-full max-w-[420px] mx-auto px-4 py-6">
           <GameHeader balance={balance} xp={xp} refreshTrigger={refreshTrigger} />
-          <h1 className="text-2xl font-bold text-white text-center mb-4">Win Prizes!</h1>
         </div>
 
         <div className="w-full max-w-[420px] mx-auto">
@@ -193,11 +192,9 @@ export default function WheelGame() {
       <div className="hidden lg:flex flex-col w-full max-w-7xl px-8 py-6">
         <GameHeader balance={balance} xp={xp} refreshTrigger={refreshTrigger} />
         
-        <div className="flex gap-12 mt-8">
+        <div className="flex gap-12 mt-4">
           {/* Left Side - Wheel */}
           <div className="flex-1 flex flex-col items-center">
-            <h1 className="text-4xl font-bold text-white text-center mb-6">Wheel of Fortune</h1>
-            
             <div className="w-full max-w-[600px]">
               <Wheel prizes={prizes} rotation={rotation} isSpinning={isSpinning} size="large" />
             </div>

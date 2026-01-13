@@ -5,9 +5,10 @@ import { createClient } from '@supabase/supabase-js';
 import { 
   LayoutDashboard, Gift, Trophy, Pencil, Upload, X, Menu,
   ChevronRight, ChevronDown, Save, Loader2, Users, RefreshCw, Database, AlertCircle, Coins, Sparkles,
-  ShieldX, LogIn, LogOut, Eye, EyeOff, User, Brain, Clock, Target, Settings, Image, Star, Plus, Trash2
+  ShieldX, LogIn, LogOut, Eye, EyeOff, User, Brain, Clock, Target, Settings, Image, Star, Plus, Trash2, Puzzle
 } from 'lucide-react';
 import iconMap from '@/components/shared/IconMap';
+import { WheelIcon, MemoryIcon, PuzzleIcon, WordSearchIcon, PacmanIcon } from '@/components/shared/GameIcons';
 
 const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
 
@@ -83,9 +84,133 @@ interface MemoryCard {
   sort_order: number;
 }
 
-type GameSection = 'wheel' | 'memory';
+// Puzzle types
+interface PuzzleConfig {
+  id: number;
+  difficulty: string;
+  grid_size: number;
+  preview_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  is_active: boolean;
+}
+
+interface PuzzleAward {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  difficulty: string;
+  grid_size: number;
+  moves: number;
+  time_seconds: number;
+  puzzle_image_id?: number;
+  is_win: boolean;
+  coins_awarded: number;
+  xp_awarded: number;
+  created_at: string;
+}
+
+interface PuzzleImage {
+  id: number;
+  name: string;
+  image_url: string;
+  description?: string;
+  is_featured: boolean;
+  is_active: boolean;
+  sort_order: number;
+  times_played: number;
+  times_solved: number;
+}
+
+interface PuzzleRewardTier {
+  id: number;
+  difficulty: string;
+  max_time_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  tier_name: string | null;
+  is_active: boolean;
+}
+
+// Word Search types
+interface WordSearchConfig {
+  id: number;
+  difficulty: string;
+  grid_size: number;
+  word_count: number;
+  time_limit_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  is_active: boolean;
+}
+
+interface WordSearchAward {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  difficulty: string;
+  words_found: number;
+  total_words: number;
+  time_seconds: number;
+  is_win: boolean;
+  coins_awarded: number;
+  xp_awarded: number;
+  created_at: string;
+}
+
+interface WordSearchWord {
+  id: number;
+  word: string;
+  difficulty: string;
+  category?: string;
+  is_active: boolean;
+}
+
+interface WordSearchRewardTier {
+  id: number;
+  difficulty: string;
+  max_time_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  tier_name: string | null;
+  is_active: boolean;
+}
+
+// Pacman types
+interface PacmanConfig {
+  id: number;
+  difficulty: string;
+  ghost_count: number;
+  ghost_speed: number;
+  pacman_speed: number;
+  time_limit_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  is_active: boolean;
+}
+
+interface PacmanAward {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  difficulty: string;
+  score: number;
+  dots_eaten: number;
+  total_dots: number;
+  ghosts_eaten: number;
+  time_seconds: number;
+  is_win: boolean;
+  coins_awarded: number;
+  xp_awarded: number;
+  created_at: string;
+}
+
+type GameSection = 'wheel' | 'memory' | 'puzzle' | 'wordsearch' | 'pacman';
 type WheelTab = 'dashboard' | 'prizes' | 'awards';
 type MemoryTab = 'dashboard' | 'cards' | 'config' | 'history';
+type PuzzleTab = 'dashboard' | 'images' | 'config' | 'history';
+type WordSearchTab = 'dashboard' | 'words' | 'config' | 'history';
+type PacmanTab = 'dashboard' | 'config' | 'history';
 
 export default function AdminPage() {
   const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
@@ -100,7 +225,8 @@ export default function AdminPage() {
   const [activeGame, setActiveGame] = useState<GameSection>('wheel');
   const [wheelTab, setWheelTab] = useState<WheelTab>('dashboard');
   const [memoryTab, setMemoryTab] = useState<MemoryTab>('dashboard');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ wheel: true, memory: true });
+  const [puzzleTab, setPuzzleTab] = useState<PuzzleTab>('dashboard');
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ wheel: true, memory: true, puzzle: true, wordsearch: true, pacman: true });
   
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<{ connected: boolean; message: string } | null>(null);
@@ -122,6 +248,37 @@ export default function AdminPage() {
   const [editingCard, setEditingCard] = useState<MemoryCard | null>(null);
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
   const [cardUploading, setCardUploading] = useState(false);
+
+  // Puzzle state
+  const [puzzleConfig, setPuzzleConfig] = useState<PuzzleConfig[]>([]);
+  const [puzzleAwards, setPuzzleAwards] = useState<PuzzleAward[]>([]);
+  const [puzzleImages, setPuzzleImages] = useState<PuzzleImage[]>([]);
+  const [editingPuzzleConfig, setEditingPuzzleConfig] = useState<PuzzleConfig | null>(null);
+  const [isPuzzleConfigModalOpen, setIsPuzzleConfigModalOpen] = useState(false);
+  const [editingPuzzleImage, setEditingPuzzleImage] = useState<PuzzleImage | null>(null);
+  const [isPuzzleImageModalOpen, setIsPuzzleImageModalOpen] = useState(false);
+  const [puzzleImageUploading, setPuzzleImageUploading] = useState(false);
+  const [puzzleRewardTiers, setPuzzleRewardTiers] = useState<PuzzleRewardTier[]>([]);
+  const [editingDifficultyTiers, setEditingDifficultyTiers] = useState<PuzzleRewardTier[]>([]);
+
+  // Word Search state
+  const [wordsearchConfig, setWordsearchConfig] = useState<WordSearchConfig[]>([]);
+  const [wordsearchAwards, setWordsearchAwards] = useState<WordSearchAward[]>([]);
+  const [wordsearchWords, setWordsearchWords] = useState<WordSearchWord[]>([]);
+  const [wordsearchTab, setWordsearchTab] = useState<WordSearchTab>('dashboard');
+  const [editingWordsearchConfig, setEditingWordsearchConfig] = useState<WordSearchConfig | null>(null);
+  const [isWordsearchConfigModalOpen, setIsWordsearchConfigModalOpen] = useState(false);
+  const [editingWord, setEditingWord] = useState<WordSearchWord | null>(null);
+  const [isWordModalOpen, setIsWordModalOpen] = useState(false);
+  const [wordsearchRewardTiers, setWordsearchRewardTiers] = useState<WordSearchRewardTier[]>([]);
+  const [editingWordsearchTiers, setEditingWordsearchTiers] = useState<WordSearchRewardTier[]>([]);
+
+  // Pacman state
+  const [pacmanConfig, setPacmanConfig] = useState<PacmanConfig[]>([]);
+  const [pacmanAwards, setPacmanAwards] = useState<PacmanAward[]>([]);
+  const [pacmanTab, setPacmanTab] = useState<PacmanTab>('dashboard');
+  const [editingPacmanConfig, setEditingPacmanConfig] = useState<PacmanConfig | null>(null);
+  const [isPacmanConfigModalOpen, setIsPacmanConfigModalOpen] = useState(false);
 
   const getSupabaseClient = () => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -223,6 +380,43 @@ export default function AdminPage() {
       if (configRes.data) setMemoryConfig(configRes.data);
       if (memoryAwardsRes.data) setMemoryAwards(memoryAwardsRes.data);
       if (memoryCardsRes.data) setMemoryCards(memoryCardsRes.data);
+
+      // Fetch puzzle data
+      const [puzzleConfigRes, puzzleAwardsRes, puzzleImagesRes, puzzleRewardTiersRes] = await Promise.all([
+        supabase.from('puzzle_config').select('*').order('difficulty'),
+        supabase.from('puzzle_awards').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('puzzle_images').select('*').order('sort_order'),
+        supabase.from('puzzle_reward_tiers').select('*').order('difficulty').order('max_time_seconds'),
+      ]);
+
+      if (puzzleConfigRes.data) setPuzzleConfig(puzzleConfigRes.data);
+      if (puzzleAwardsRes.data) setPuzzleAwards(puzzleAwardsRes.data);
+      if (puzzleImagesRes.data) setPuzzleImages(puzzleImagesRes.data);
+      if (puzzleRewardTiersRes.data) setPuzzleRewardTiers(puzzleRewardTiersRes.data);
+
+      // Fetch word search data
+      const [wordsearchConfigRes, wordsearchAwardsRes, wordsearchWordsRes] = await Promise.all([
+        supabase.from('wordsearch_config').select('*').order('difficulty'),
+        supabase.from('wordsearch_awards').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('wordsearch_words').select('*').order('difficulty').order('word'),
+      ]);
+
+      if (wordsearchConfigRes.data) setWordsearchConfig(wordsearchConfigRes.data);
+      if (wordsearchAwardsRes.data) setWordsearchAwards(wordsearchAwardsRes.data);
+      if (wordsearchWordsRes.data) setWordsearchWords(wordsearchWordsRes.data);
+
+      // Fetch word search reward tiers
+      const { data: wordsearchTiersRes } = await supabase.from('wordsearch_reward_tiers').select('*').order('difficulty').order('max_time_seconds');
+      if (wordsearchTiersRes) setWordsearchRewardTiers(wordsearchTiersRes);
+
+      // Fetch pacman data
+      const [pacmanConfigRes, pacmanAwardsRes] = await Promise.all([
+        supabase.from('pacman_config').select('*').order('difficulty'),
+        supabase.from('pacman_awards').select('*').order('created_at', { ascending: false }).limit(100),
+      ]);
+
+      if (pacmanConfigRes.data) setPacmanConfig(pacmanConfigRes.data);
+      if (pacmanAwardsRes.data) setPacmanAwards(pacmanAwardsRes.data);
 
       setDbStatus({ connected: true, message: 'Connected to database' });
     } catch (error) {
@@ -423,6 +617,299 @@ export default function AdminPage() {
     setCardUploading(false);
   };
 
+  // Puzzle functions
+  const savePuzzleConfig = async () => {
+    if (!editingPuzzleConfig) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    setSaving(true);
+    try {
+      // Save config
+      const { error } = await supabase.from('puzzle_config').update({
+        grid_size: editingPuzzleConfig.grid_size,
+        preview_seconds: editingPuzzleConfig.preview_seconds,
+        coins_reward: editingPuzzleConfig.coins_reward,
+        xp_reward: editingPuzzleConfig.xp_reward,
+        is_active: editingPuzzleConfig.is_active,
+      }).eq('id', editingPuzzleConfig.id);
+
+      if (error) throw error;
+      setPuzzleConfig(prev => prev.map(c => c.id === editingPuzzleConfig.id ? editingPuzzleConfig : c));
+
+      // Save reward tiers for this difficulty
+      const difficulty = editingPuzzleConfig.difficulty;
+      
+      // Delete existing tiers for this difficulty
+      const { error: deleteError } = await supabase.from('puzzle_reward_tiers').delete().eq('difficulty', difficulty);
+      if (deleteError) {
+        console.error('Error deleting tiers:', deleteError);
+      }
+      
+      // Insert new tiers if any
+      if (editingDifficultyTiers.length > 0) {
+        const tiersToInsert = editingDifficultyTiers.map(t => ({
+          difficulty: difficulty,
+          max_time_seconds: t.max_time_seconds,
+          coins_reward: t.coins_reward,
+          xp_reward: t.xp_reward,
+          tier_name: t.tier_name || null,
+          is_active: t.is_active !== false,
+        }));
+        
+        console.log('Inserting tiers:', tiersToInsert);
+        
+        const { data: insertedTiers, error: tierError } = await supabase.from('puzzle_reward_tiers').insert(tiersToInsert).select();
+        if (tierError) {
+          console.error('Error inserting tiers:', tierError);
+          throw tierError;
+        }
+        console.log('Inserted tiers:', insertedTiers);
+      }
+      
+      // Refresh all tiers
+      const { data: newTiers } = await supabase.from('puzzle_reward_tiers').select('*').order('difficulty').order('max_time_seconds');
+      if (newTiers) setPuzzleRewardTiers(newTiers);
+
+      setIsPuzzleConfigModalOpen(false);
+      setEditingPuzzleConfig(null);
+      setEditingDifficultyTiers([]);
+    } catch (error) {
+      console.error('Error saving puzzle config:', error);
+      alert('Error saving configuration. Check console for details.');
+    }
+    setSaving(false);
+  };
+
+  const savePuzzleImage = async () => {
+    if (!editingPuzzleImage) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    setSaving(true);
+    try {
+      if (editingPuzzleImage.id === 0) {
+        // New image
+        const { data, error } = await supabase.from('puzzle_images').insert({
+          name: editingPuzzleImage.name,
+          image_url: editingPuzzleImage.image_url,
+          description: editingPuzzleImage.description,
+          is_featured: editingPuzzleImage.is_featured,
+          is_active: editingPuzzleImage.is_active,
+          sort_order: editingPuzzleImage.sort_order,
+        }).select().single();
+
+        if (error) throw error;
+        if (data) setPuzzleImages(prev => [...prev, data]);
+      } else {
+        // Update existing
+        const { error } = await supabase.from('puzzle_images').update({
+          name: editingPuzzleImage.name,
+          image_url: editingPuzzleImage.image_url,
+          description: editingPuzzleImage.description,
+          is_featured: editingPuzzleImage.is_featured,
+          is_active: editingPuzzleImage.is_active,
+          sort_order: editingPuzzleImage.sort_order,
+        }).eq('id', editingPuzzleImage.id);
+
+        if (error) throw error;
+        setPuzzleImages(prev => prev.map(img => img.id === editingPuzzleImage.id ? editingPuzzleImage : img));
+      }
+      setIsPuzzleImageModalOpen(false);
+      setEditingPuzzleImage(null);
+    } catch (error) {
+      console.error('Error saving puzzle image:', error);
+    }
+    setSaving(false);
+  };
+
+  const deletePuzzleImage = async (imageId: number) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from('puzzle_images').delete().eq('id', imageId);
+      if (error) throw error;
+      setPuzzleImages(prev => prev.filter(img => img.id !== imageId));
+    } catch (error) {
+      console.error('Error deleting puzzle image:', error);
+    }
+  };
+
+  const handlePuzzleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, imageId: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      alert('Database connection not available');
+      return;
+    }
+
+    setPuzzleImageUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `puzzle-image-${imageId}-${Date.now()}.${fileExt}`;
+      const filePath = `puzzle-images/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('bucket')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) {
+        alert(`Upload failed: ${uploadError.message}`);
+        throw uploadError;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('bucket')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase.from('puzzle_images').update({ image_url: publicUrl }).eq('id', imageId);
+      
+      if (updateError) {
+        alert(`Failed to update database: ${updateError.message}`);
+        throw updateError;
+      }
+
+      setPuzzleImages(prev => prev.map(img => img.id === imageId ? { ...img, image_url: publicUrl } : img));
+      alert('Image uploaded successfully!');
+    } catch (error) {
+      console.error('Upload error:', error);
+    }
+    setPuzzleImageUploading(false);
+  };
+
+  // Word Search functions
+  const saveWordsearchConfig = async () => {
+    if (!editingWordsearchConfig) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    setSaving(true);
+    try {
+      // Update config
+      const { error } = await supabase.from('wordsearch_config').update({
+        grid_size: editingWordsearchConfig.grid_size,
+        word_count: editingWordsearchConfig.word_count,
+        time_limit_seconds: editingWordsearchConfig.time_limit_seconds,
+        coins_reward: editingWordsearchConfig.coins_reward,
+        xp_reward: editingWordsearchConfig.xp_reward,
+        is_active: editingWordsearchConfig.is_active,
+      }).eq('id', editingWordsearchConfig.id);
+
+      if (error) throw error;
+      setWordsearchConfig(prev => prev.map(c => c.id === editingWordsearchConfig.id ? editingWordsearchConfig : c));
+
+      // Save reward tiers
+      if (editingWordsearchTiers.length > 0) {
+        // Delete existing tiers for this difficulty
+        await supabase.from('wordsearch_reward_tiers').delete().eq('difficulty', editingWordsearchConfig.difficulty);
+        
+        // Insert new tiers
+        const tiersToInsert = editingWordsearchTiers.map(t => ({
+          difficulty: editingWordsearchConfig.difficulty,
+          max_time_seconds: t.max_time_seconds,
+          coins_reward: t.coins_reward,
+          xp_reward: t.xp_reward,
+          tier_name: t.tier_name,
+          is_active: true,
+        }));
+        
+        await supabase.from('wordsearch_reward_tiers').insert(tiersToInsert);
+        
+        // Refresh tiers
+        const { data: newTiers } = await supabase.from('wordsearch_reward_tiers').select('*').order('difficulty').order('max_time_seconds');
+        if (newTiers) setWordsearchRewardTiers(newTiers);
+      }
+
+      setIsWordsearchConfigModalOpen(false);
+      setEditingWordsearchConfig(null);
+      setEditingWordsearchTiers([]);
+    } catch (error) {
+      console.error('Error saving word search config:', error);
+    }
+    setSaving(false);
+  };
+
+  const saveWordsearchWord = async () => {
+    if (!editingWord) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    setSaving(true);
+    try {
+      if (editingWord.id === 0) {
+        // New word
+        const { data, error } = await supabase.from('wordsearch_words').insert({
+          word: editingWord.word.toUpperCase(),
+          difficulty: editingWord.difficulty,
+          category: editingWord.category || null,
+          is_active: editingWord.is_active,
+        }).select().single();
+
+        if (error) throw error;
+        if (data) setWordsearchWords(prev => [...prev, data]);
+      } else {
+        // Update existing
+        const { error } = await supabase.from('wordsearch_words').update({
+          word: editingWord.word.toUpperCase(),
+          difficulty: editingWord.difficulty,
+          category: editingWord.category || null,
+          is_active: editingWord.is_active,
+        }).eq('id', editingWord.id);
+
+        if (error) throw error;
+        setWordsearchWords(prev => prev.map(w => w.id === editingWord.id ? { ...editingWord, word: editingWord.word.toUpperCase() } : w));
+      }
+      setIsWordModalOpen(false);
+      setEditingWord(null);
+    } catch (error) {
+      console.error('Error saving word:', error);
+    }
+    setSaving(false);
+  };
+
+  const deleteWordsearchWord = async (wordId: number) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from('wordsearch_words').delete().eq('id', wordId);
+      if (error) throw error;
+      setWordsearchWords(prev => prev.filter(w => w.id !== wordId));
+    } catch (error) {
+      console.error('Error deleting word:', error);
+    }
+  };
+
+  // Pacman functions
+  const savePacmanConfig = async () => {
+    if (!editingPacmanConfig) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('pacman_config').update({
+        ghost_count: editingPacmanConfig.ghost_count,
+        ghost_speed: editingPacmanConfig.ghost_speed,
+        pacman_speed: editingPacmanConfig.pacman_speed,
+        time_limit_seconds: editingPacmanConfig.time_limit_seconds,
+        coins_reward: editingPacmanConfig.coins_reward,
+        xp_reward: editingPacmanConfig.xp_reward,
+        is_active: editingPacmanConfig.is_active,
+      }).eq('id', editingPacmanConfig.id);
+
+      if (error) throw error;
+      setPacmanConfig(prev => prev.map(c => c.id === editingPacmanConfig.id ? editingPacmanConfig : c));
+      setIsPacmanConfigModalOpen(false);
+      setEditingPacmanConfig(null);
+    } catch (error) {
+      console.error('Error saving pacman config:', error);
+    }
+    setSaving(false);
+  };
+
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
@@ -439,6 +926,36 @@ export default function AdminPage() {
     wins: memoryAwards.filter(a => a.is_win).length,
     todayGames: memoryAwards.filter(a => a.created_at.startsWith(new Date().toISOString().split('T')[0])).length,
     uniqueUsers: new Set(memoryAwards.map(a => a.user_id)).size,
+  };
+
+  const puzzleStats = {
+    totalGames: puzzleAwards.length,
+    wins: puzzleAwards.filter(a => a.is_win).length,
+    todayGames: puzzleAwards.filter(a => a.created_at.startsWith(new Date().toISOString().split('T')[0])).length,
+    uniqueUsers: new Set(puzzleAwards.map(a => a.user_id)).size,
+    avgTime: puzzleAwards.filter(a => a.is_win).length > 0 
+      ? Math.round(puzzleAwards.filter(a => a.is_win).reduce((sum, a) => sum + a.time_seconds, 0) / puzzleAwards.filter(a => a.is_win).length)
+      : 0,
+  };
+
+  const wordsearchStats = {
+    totalGames: wordsearchAwards.length,
+    wins: wordsearchAwards.filter(a => a.is_win).length,
+    todayGames: wordsearchAwards.filter(a => a.created_at.startsWith(new Date().toISOString().split('T')[0])).length,
+    uniqueUsers: new Set(wordsearchAwards.map(a => a.user_id)).size,
+    avgTime: wordsearchAwards.filter(a => a.is_win).length > 0 
+      ? Math.round(wordsearchAwards.filter(a => a.is_win).reduce((sum, a) => sum + a.time_seconds, 0) / wordsearchAwards.filter(a => a.is_win).length)
+      : 0,
+  };
+
+  const pacmanStats = {
+    totalGames: pacmanAwards.length,
+    wins: pacmanAwards.filter(a => a.is_win).length,
+    todayGames: pacmanAwards.filter(a => a.created_at.startsWith(new Date().toISOString().split('T')[0])).length,
+    uniqueUsers: new Set(pacmanAwards.map(a => a.user_id)).size,
+    avgScore: pacmanAwards.filter(a => a.is_win).length > 0 
+      ? Math.round(pacmanAwards.filter(a => a.is_win).reduce((sum, a) => sum + a.score, 0) / pacmanAwards.filter(a => a.is_win).length)
+      : 0,
   };
 
   // Auth loading
@@ -528,7 +1045,7 @@ export default function AdminPage() {
             <div>
               <button onClick={() => toggleSection('wheel')} className="w-full flex items-center justify-between px-3 py-2 text-white/70 hover:text-white hover:bg-white/5 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">🎡</span>
+                  <WheelIcon size={20} />
                   <span className="font-medium">Wheel of Fortune</span>
                 </div>
                 {expandedSections.wheel ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -546,7 +1063,7 @@ export default function AdminPage() {
             <div>
               <button onClick={() => toggleSection('memory')} className="w-full flex items-center justify-between px-3 py-2 text-white/70 hover:text-white hover:bg-white/5 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">🧠</span>
+                  <MemoryIcon size={20} />
                   <span className="font-medium">Memory Game</span>
                 </div>
                 {expandedSections.memory ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -557,6 +1074,62 @@ export default function AdminPage() {
                   <NavButton active={activeGame === 'memory' && memoryTab === 'cards'} onClick={() => { setActiveGame('memory'); setMemoryTab('cards'); setSidebarOpen(false); }} icon={Image} label="Cards" />
                   <NavButton active={activeGame === 'memory' && memoryTab === 'config'} onClick={() => { setActiveGame('memory'); setMemoryTab('config'); setSidebarOpen(false); }} icon={Settings} label="Configuration" />
                   <NavButton active={activeGame === 'memory' && memoryTab === 'history'} onClick={() => { setActiveGame('memory'); setMemoryTab('history'); setSidebarOpen(false); }} icon={Trophy} label="Game History" />
+                </div>
+              )}
+            </div>
+
+            {/* Puzzle Game Section */}
+            <div>
+              <button onClick={() => toggleSection('puzzle')} className="w-full flex items-center justify-between px-3 py-2 text-white/70 hover:text-white hover:bg-white/5 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <PuzzleIcon size={20} />
+                  <span className="font-medium">Puzzle Game</span>
+                </div>
+                {expandedSections.puzzle ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {expandedSections.puzzle && (
+                <div className="ml-4 mt-1 space-y-1">
+                  <NavButton active={activeGame === 'puzzle' && puzzleTab === 'dashboard'} onClick={() => { setActiveGame('puzzle'); setPuzzleTab('dashboard'); setSidebarOpen(false); }} icon={LayoutDashboard} label="Dashboard" />
+                  <NavButton active={activeGame === 'puzzle' && puzzleTab === 'images'} onClick={() => { setActiveGame('puzzle'); setPuzzleTab('images'); setSidebarOpen(false); }} icon={Image} label="Images" />
+                  <NavButton active={activeGame === 'puzzle' && puzzleTab === 'config'} onClick={() => { setActiveGame('puzzle'); setPuzzleTab('config'); setSidebarOpen(false); }} icon={Settings} label="Configuration" />
+                  <NavButton active={activeGame === 'puzzle' && puzzleTab === 'history'} onClick={() => { setActiveGame('puzzle'); setPuzzleTab('history'); setSidebarOpen(false); }} icon={Trophy} label="Game History" />
+                </div>
+              )}
+            </div>
+
+            {/* Word Search Game Section */}
+            <div>
+              <button onClick={() => toggleSection('wordsearch')} className="w-full flex items-center justify-between px-3 py-2 text-white/70 hover:text-white hover:bg-white/5 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <WordSearchIcon size={20} />
+                  <span className="font-medium">Word Search</span>
+                </div>
+                {expandedSections.wordsearch ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {expandedSections.wordsearch && (
+                <div className="ml-4 mt-1 space-y-1">
+                  <NavButton active={activeGame === 'wordsearch' && wordsearchTab === 'dashboard'} onClick={() => { setActiveGame('wordsearch'); setWordsearchTab('dashboard'); setSidebarOpen(false); }} icon={LayoutDashboard} label="Dashboard" />
+                  <NavButton active={activeGame === 'wordsearch' && wordsearchTab === 'words'} onClick={() => { setActiveGame('wordsearch'); setWordsearchTab('words'); setSidebarOpen(false); }} icon={Gift} label="Words" />
+                  <NavButton active={activeGame === 'wordsearch' && wordsearchTab === 'config'} onClick={() => { setActiveGame('wordsearch'); setWordsearchTab('config'); setSidebarOpen(false); }} icon={Settings} label="Configuration" />
+                  <NavButton active={activeGame === 'wordsearch' && wordsearchTab === 'history'} onClick={() => { setActiveGame('wordsearch'); setWordsearchTab('history'); setSidebarOpen(false); }} icon={Trophy} label="Game History" />
+                </div>
+              )}
+            </div>
+
+            {/* Pac-Man Game Section */}
+            <div>
+              <button onClick={() => toggleSection('pacman')} className="w-full flex items-center justify-between px-3 py-2 text-white/70 hover:text-white hover:bg-white/5 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <PacmanIcon size={20} />
+                  <span className="font-medium">Pac-Man</span>
+                </div>
+                {expandedSections.pacman ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {expandedSections.pacman && (
+                <div className="ml-4 mt-1 space-y-1">
+                  <NavButton active={activeGame === 'pacman' && pacmanTab === 'dashboard'} onClick={() => { setActiveGame('pacman'); setPacmanTab('dashboard'); setSidebarOpen(false); }} icon={LayoutDashboard} label="Dashboard" />
+                  <NavButton active={activeGame === 'pacman' && pacmanTab === 'config'} onClick={() => { setActiveGame('pacman'); setPacmanTab('config'); setSidebarOpen(false); }} icon={Settings} label="Configuration" />
+                  <NavButton active={activeGame === 'pacman' && pacmanTab === 'history'} onClick={() => { setActiveGame('pacman'); setPacmanTab('history'); setSidebarOpen(false); }} icon={Trophy} label="Game History" />
                 </div>
               )}
             </div>
@@ -614,6 +1187,35 @@ export default function AdminPage() {
                   {memoryTab === 'history' && <MemoryHistory awards={memoryAwards} />}
                 </>
               )}
+
+              {/* PUZZLE GAME CONTENT */}
+              {activeGame === 'puzzle' && (
+                <>
+                  {puzzleTab === 'dashboard' && <PuzzleDashboard stats={puzzleStats} awards={puzzleAwards} />}
+                  {puzzleTab === 'images' && <PuzzleImages images={puzzleImages} onEdit={(img) => { setEditingPuzzleImage(img); setIsPuzzleImageModalOpen(true); }} onUpload={handlePuzzleImageUpload} onDelete={deletePuzzleImage} uploading={puzzleImageUploading} onAddNew={() => { setEditingPuzzleImage({ id: 0, name: '', image_url: '', description: '', is_featured: true, is_active: true, sort_order: puzzleImages.length + 1, times_played: 0, times_solved: 0 }); setIsPuzzleImageModalOpen(true); }} />}
+                  {puzzleTab === 'config' && <PuzzleConfiguration config={puzzleConfig} onEdit={(c, tiers) => { setEditingPuzzleConfig(c); setEditingDifficultyTiers(tiers); setIsPuzzleConfigModalOpen(true); }} rewardTiers={puzzleRewardTiers} />}
+                  {puzzleTab === 'history' && <PuzzleHistory awards={puzzleAwards} />}
+                </>
+              )}
+
+              {/* WORD SEARCH GAME CONTENT */}
+              {activeGame === 'wordsearch' && (
+                <>
+                  {wordsearchTab === 'dashboard' && <WordSearchDashboard stats={wordsearchStats} awards={wordsearchAwards} />}
+                  {wordsearchTab === 'words' && <WordSearchWords words={wordsearchWords} onEdit={(w) => { setEditingWord(w); setIsWordModalOpen(true); }} onDelete={deleteWordsearchWord} onAddNew={() => { setEditingWord({ id: 0, word: '', difficulty: 'easy', category: '', is_active: true }); setIsWordModalOpen(true); }} />}
+                  {wordsearchTab === 'config' && <WordSearchConfiguration config={wordsearchConfig} onEdit={(c, tiers) => { setEditingWordsearchConfig(c); setEditingWordsearchTiers(tiers); setIsWordsearchConfigModalOpen(true); }} rewardTiers={wordsearchRewardTiers} />}
+                  {wordsearchTab === 'history' && <WordSearchHistory awards={wordsearchAwards} />}
+                </>
+              )}
+
+              {/* PACMAN GAME CONTENT */}
+              {activeGame === 'pacman' && (
+                <>
+                  {pacmanTab === 'dashboard' && <PacmanDashboard stats={pacmanStats} awards={pacmanAwards} />}
+                  {pacmanTab === 'config' && <PacmanConfiguration config={pacmanConfig} onEdit={(c) => { setEditingPacmanConfig(c); setIsPacmanConfigModalOpen(true); }} />}
+                  {pacmanTab === 'history' && <PacmanHistory awards={pacmanAwards} />}
+                </>
+              )}
             </>
           )}
         </div>
@@ -632,6 +1234,31 @@ export default function AdminPage() {
       {/* Memory Card Modal */}
       {isCardModalOpen && editingCard && (
         <CardModal card={editingCard} onChange={setEditingCard} onSave={saveMemoryCard} onClose={() => setIsCardModalOpen(false)} saving={saving} />
+      )}
+
+      {/* Puzzle Config Modal */}
+      {isPuzzleConfigModalOpen && editingPuzzleConfig && (
+        <PuzzleConfigModal config={editingPuzzleConfig} onChange={setEditingPuzzleConfig} tiers={editingDifficultyTiers} onTiersChange={setEditingDifficultyTiers} onSave={savePuzzleConfig} onClose={() => { setIsPuzzleConfigModalOpen(false); setEditingDifficultyTiers([]); }} saving={saving} />
+      )}
+
+      {/* Puzzle Image Modal */}
+      {isPuzzleImageModalOpen && editingPuzzleImage && (
+        <PuzzleImageModal image={editingPuzzleImage} onChange={setEditingPuzzleImage} onSave={savePuzzleImage} onClose={() => setIsPuzzleImageModalOpen(false)} saving={saving} />
+      )}
+
+      {/* Word Search Config Modal */}
+      {isWordsearchConfigModalOpen && editingWordsearchConfig && (
+        <WordSearchConfigModal config={editingWordsearchConfig} onChange={setEditingWordsearchConfig} tiers={editingWordsearchTiers} onTiersChange={setEditingWordsearchTiers} onSave={saveWordsearchConfig} onClose={() => { setIsWordsearchConfigModalOpen(false); setEditingWordsearchTiers([]); }} saving={saving} />
+      )}
+
+      {/* Word Search Word Modal */}
+      {isWordModalOpen && editingWord && (
+        <WordSearchWordModal word={editingWord} onChange={setEditingWord} onSave={saveWordsearchWord} onClose={() => setIsWordModalOpen(false)} saving={saving} />
+      )}
+
+      {/* Pacman Config Modal */}
+      {isPacmanConfigModalOpen && editingPacmanConfig && (
+        <PacmanConfigModal config={editingPacmanConfig} onChange={setEditingPacmanConfig} onSave={savePacmanConfig} onClose={() => setIsPacmanConfigModalOpen(false)} saving={saving} />
       )}
     </div>
   );
@@ -1151,6 +1778,1205 @@ function CardModal({ card, onChange, onSave, onClose, saving }: { card: MemoryCa
           <button onClick={onClose} className="flex-1 px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10">Cancel</button>
           <button onClick={onSave} disabled={saving || !card.name || !card.image_url} className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} {isNew ? 'Create' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// PUZZLE COMPONENTS
+function PuzzleDashboard({ stats, awards }: { stats: { totalGames: number; wins: number; todayGames: number; uniqueUsers: number; avgTime: number }; awards: PuzzleAward[] }) {
+  const winRate = stats.totalGames > 0 ? Math.round((stats.wins / stats.totalGames) * 100) : 0;
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">🧩 Puzzle Game Dashboard</h2>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <StatCard title="Total Games" value={stats.totalGames} icon={<Puzzle className="w-5 h-5" />} color="purple" />
+        <StatCard title="Wins" value={stats.wins} icon={<Trophy className="w-5 h-5" />} color="green" />
+        <StatCard title="Win Rate" value={winRate} icon={<Target className="w-5 h-5" />} color="yellow" />
+        <StatCard title="Avg Time (s)" value={stats.avgTime} icon={<Clock className="w-5 h-5" />} color="blue" />
+        <StatCard title="Unique Users" value={stats.uniqueUsers} icon={<Users className="w-5 h-5" />} color="pink" />
+      </div>
+      <div className="bg-[#12121f] rounded-2xl border border-white/10 p-6">
+        <h3 className="font-semibold mb-4">Recent Games</h3>
+        <div className="space-y-3">
+          {awards.slice(0, 5).map(award => (
+            <div key={award.id} className="flex items-center gap-3 p-3 bg-white/5 rounded-xl">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${award.is_win ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                {award.is_win ? <Trophy className="w-5 h-5 text-green-400" /> : <Clock className="w-5 h-5 text-red-400" />}
+              </div>
+              <div className="flex-1">
+                <p className="font-medium">{award.user_name || 'Anonymous'} - {award.difficulty} ({award.grid_size}×{award.grid_size})</p>
+                <p className="text-sm text-gray-400">{award.moves} moves, {award.time_seconds}s</p>
+              </div>
+              <div className="text-right">
+                <span className={`text-sm font-medium ${award.is_win ? 'text-green-400' : 'text-red-400'}`}>
+                  {award.is_win ? 'Solved' : 'Incomplete'}
+                </span>
+                {award.is_win && (
+                  <p className="text-xs text-gray-400">+{award.coins_awarded} / +{award.xp_awarded} XP</p>
+                )}
+              </div>
+            </div>
+          ))}
+          {awards.length === 0 && <p className="text-gray-400 text-center py-8">No games yet</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PuzzleConfiguration({ config, onEdit, rewardTiers }: { config: PuzzleConfig[]; onEdit: (c: PuzzleConfig, tiers: PuzzleRewardTier[]) => void; rewardTiers: PuzzleRewardTier[] }) {
+  const difficultyColors: Record<string, string> = {
+    easy: 'from-green-500 to-emerald-600',
+    medium: 'from-yellow-500 to-orange-600',
+    hard: 'from-red-500 to-pink-600',
+  };
+
+  const getTiersForDifficulty = (difficulty: string) => {
+    return rewardTiers.filter(t => t.difficulty === difficulty);
+  };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">⚙️ Puzzle Configuration</h2>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {config.map(c => {
+          const tiers = getTiersForDifficulty(c.difficulty);
+          return (
+            <div key={c.id} className={`bg-[#12121f] rounded-2xl border ${c.is_active ? 'border-white/10' : 'border-red-500/30 opacity-60'} p-5`}>
+              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${difficultyColors[c.difficulty]} flex items-center justify-center mb-4`}>
+                <Puzzle className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="font-bold text-lg capitalize mb-4">{c.difficulty}</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Grid Size</span>
+                  <span className="font-medium">{c.grid_size}×{c.grid_size}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Preview Time</span>
+                  <span className="font-medium">{c.preview_seconds}s</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Reward Tiers</span>
+                  <span className="font-medium text-orange-400">{tiers.length} tiers</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Status</span>
+                  <span className={`font-medium ${c.is_active ? 'text-green-400' : 'text-red-400'}`}>{c.is_active ? 'Active' : 'Disabled'}</span>
+                </div>
+              </div>
+              {tiers.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-xs text-gray-500 mb-2">Time rewards:</p>
+                  <div className="space-y-1">
+                    {tiers.slice(0, 3).map(t => (
+                      <div key={t.id} className="flex justify-between text-xs">
+                        <span className="text-gray-400">≤{t.max_time_seconds >= 999999 ? '∞' : t.max_time_seconds >= 60 ? `${Math.floor(t.max_time_seconds/60)}m` : `${t.max_time_seconds}s`}</span>
+                        <span><span className="text-yellow-400">+{t.coins_reward}</span> / <span className="text-cyan-400">+{t.xp_reward}XP</span></span>
+                      </div>
+                    ))}
+                    {tiers.length > 3 && <p className="text-xs text-gray-500">+{tiers.length - 3} more...</p>}
+                  </div>
+                </div>
+              )}
+              <button onClick={() => onEdit(c, tiers)} className="w-full mt-4 px-4 py-2 bg-white/5 rounded-lg hover:bg-white/10 flex items-center justify-center gap-2">
+                <Pencil size={16} /> Edit
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-sm">
+        <p className="text-blue-400">
+          <strong>Tip:</strong> Click "Edit" on a difficulty to configure both settings and time-based rewards in one place.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PuzzleHistory({ awards }: { awards: PuzzleAward[] }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">📜 Puzzle Game History ({awards.length})</h2>
+      <div className="bg-[#12121f] rounded-2xl border border-white/10 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="text-left p-4 font-semibold text-gray-400">User</th>
+                <th className="text-left p-4 font-semibold text-gray-400">Difficulty</th>
+                <th className="text-left p-4 font-semibold text-gray-400 hidden md:table-cell">Stats</th>
+                <th className="text-left p-4 font-semibold text-gray-400">Result</th>
+                <th className="text-left p-4 font-semibold text-gray-400 hidden sm:table-cell">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {awards.map(award => (
+                <tr key={award.id} className="border-b border-white/5 hover:bg-white/5">
+                  <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center"><User size={14} /></div>
+                      <span className="font-medium">{award.user_name || 'Anonymous'}</span>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <span className="capitalize">{award.difficulty}</span>
+                    <span className="text-gray-400 text-sm ml-1">({award.grid_size}×{award.grid_size})</span>
+                  </td>
+                  <td className="p-4 hidden md:table-cell text-gray-400 text-sm">
+                    {award.moves} moves • {award.time_seconds}s
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${award.is_win ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                      {award.is_win ? 'Solved' : 'Incomplete'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-gray-400 text-sm hidden sm:table-cell">{new Date(award.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+              {awards.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-gray-400">No games yet</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Puzzle Images Component
+function PuzzleImages({ images, onEdit, onUpload, onDelete, uploading, onAddNew }: { images: PuzzleImage[]; onEdit: (img: PuzzleImage) => void; onUpload: (e: React.ChangeEvent<HTMLInputElement>, id: number) => void; onDelete: (id: number) => void; uploading: boolean; onAddNew: () => void }) {
+  const featuredCount = images.filter(img => img.is_featured && img.is_active).length;
+  const activeCount = images.filter(img => img.is_active).length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold">🖼️ Puzzle Images ({images.length})</h2>
+          <p className="text-gray-400 text-sm mt-1">{featuredCount} featured, {activeCount} active</p>
+        </div>
+        <button onClick={onAddNew} className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl hover:opacity-90">
+          <Plus size={18} /> Add Image
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        {images.map(img => (
+          <div key={img.id} className={`bg-[#12121f] rounded-2xl border ${img.is_active ? 'border-white/10' : 'border-red-500/30 opacity-60'} p-4 relative group`}>
+            {img.is_featured && (
+              <div className="absolute top-2 right-2 z-10">
+                <Star size={16} className="text-yellow-400 fill-yellow-400" />
+              </div>
+            )}
+            <div className="w-full aspect-square rounded-xl bg-white/5 flex items-center justify-center mb-3 overflow-hidden">
+              <img src={img.image_url} alt={img.name} className="w-full h-full object-cover" />
+            </div>
+            <p className="font-medium text-sm text-center truncate mb-1">{img.name}</p>
+            <div className="flex justify-center gap-2 text-xs text-gray-400 mb-3">
+              <span>🎮 {img.times_played}</span>
+              <span>✅ {img.times_solved}</span>
+            </div>
+            <div className="flex gap-1">
+              <label className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 text-xs">
+                <Upload size={12} />
+                <span>{uploading ? '...' : 'Img'}</span>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => onUpload(e, img.id)} disabled={uploading} />
+              </label>
+              <button onClick={() => onEdit(img)} className="px-2 py-1.5 bg-white/5 rounded-lg hover:bg-white/10">
+                <Pencil size={12} />
+              </button>
+              <button onClick={() => onDelete(img.id)} className="px-2 py-1.5 bg-red-500/10 rounded-lg hover:bg-red-500/20 text-red-400">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {images.length === 0 && (
+        <div className="text-center py-12 bg-[#12121f] rounded-2xl border border-white/10">
+          <Image size={48} className="mx-auto text-gray-600 mb-4" />
+          <p className="text-gray-400">No puzzle images yet. Add your first image!</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Puzzle Config Modal
+function PuzzleConfigModal({ config, onChange, tiers, onTiersChange, onSave, onClose, saving }: { config: PuzzleConfig; onChange: (c: PuzzleConfig) => void; tiers: PuzzleRewardTier[]; onTiersChange: (t: PuzzleRewardTier[]) => void; onSave: () => void; onClose: () => void; saving: boolean }) {
+  const [editingTierIndex, setEditingTierIndex] = useState<number | null>(null);
+
+  const formatTime = (seconds: number) => {
+    if (seconds >= 999999) return '∞';
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    }
+    return `${seconds}s`;
+  };
+
+  const addTier = () => {
+    const newTier: PuzzleRewardTier = {
+      id: Date.now(), // Use timestamp as temporary ID for new tiers
+      difficulty: config.difficulty,
+      max_time_seconds: 60,
+      coins_reward: 50,
+      xp_reward: 25,
+      tier_name: '',
+      is_active: true,
+    };
+    onTiersChange([...tiers, newTier].sort((a, b) => a.max_time_seconds - b.max_time_seconds));
+  };
+
+  const updateTier = (index: number, updates: Partial<PuzzleRewardTier>) => {
+    const newTiers = [...tiers];
+    newTiers[index] = { ...newTiers[index], ...updates };
+    onTiersChange(newTiers.sort((a, b) => a.max_time_seconds - b.max_time_seconds));
+  };
+
+  const deleteTier = (index: number) => {
+    onTiersChange(tiers.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative bg-[#12121f] rounded-2xl border border-white/10 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold capitalize">Edit {config.difficulty} Mode</h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded"><X size={20} /></button>
+        </div>
+        
+        {/* Basic Settings */}
+        <div className="space-y-4 mb-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Grid Size</label>
+              <input type="number" value={config.grid_size} onChange={(e) => onChange({ ...config, grid_size: parseInt(e.target.value) || 3 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={2} max={8} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Preview (sec)</label>
+              <input type="number" value={config.preview_seconds} onChange={(e) => onChange({ ...config, preview_seconds: parseInt(e.target.value) || 3 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="puzzle_config_active" checked={config.is_active} onChange={(e) => onChange({ ...config, is_active: e.target.checked })} className="w-5 h-5 rounded" />
+            <label htmlFor="puzzle_config_active">Active</label>
+          </div>
+        </div>
+
+        {/* Time-Based Rewards */}
+        <div className="border-t border-white/10 pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-bold flex items-center gap-2">
+              <Clock size={18} className="text-orange-400" />
+              Time-Based Rewards
+            </h4>
+            <button onClick={addTier} className="flex items-center gap-1 px-3 py-1.5 bg-orange-500/20 text-orange-400 rounded-lg hover:bg-orange-500/30 text-sm">
+              <Plus size={14} /> Add
+            </button>
+          </div>
+
+          {tiers.length > 0 ? (
+            <div className="space-y-2">
+              {tiers.map((tier, index) => (
+                <div key={index} className="bg-white/5 rounded-xl p-3 border border-white/10">
+                  {editingTierIndex === index ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Time (seconds)</label>
+                          <input 
+                            type="number" 
+                            value={tier.max_time_seconds >= 999999 ? '' : tier.max_time_seconds} 
+                            placeholder="∞"
+                            onChange={(e) => updateTier(index, { max_time_seconds: e.target.value ? parseInt(e.target.value) : 999999 })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Tier Name</label>
+                          <input 
+                            type="text" 
+                            value={tier.tier_name || ''} 
+                            onChange={(e) => updateTier(index, { tier_name: e.target.value })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                            placeholder="e.g., Fast"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Coins</label>
+                          <input 
+                            type="number" 
+                            value={tier.coins_reward} 
+                            onChange={(e) => updateTier(index, { coins_reward: parseInt(e.target.value) || 0 })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">XP</label>
+                          <input 
+                            type="number" 
+                            value={tier.xp_reward} 
+                            onChange={(e) => updateTier(index, { xp_reward: parseInt(e.target.value) || 0 })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                          />
+                        </div>
+                      </div>
+                      <button onClick={() => setEditingTierIndex(null)} className="w-full py-2 bg-green-500/20 text-green-400 rounded-lg text-sm hover:bg-green-500/30">
+                        Done
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <span className="text-white font-medium">≤ {formatTime(tier.max_time_seconds)}</span>
+                          {tier.tier_name && <span className="text-gray-400 text-sm ml-2">({tier.tier_name})</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-yellow-400 text-sm">+{tier.coins_reward}</span>
+                        <span className="text-cyan-400 text-sm">+{tier.xp_reward} XP</span>
+                        <button onClick={() => setEditingTierIndex(index)} className="p-1.5 bg-white/5 rounded hover:bg-white/10">
+                          <Pencil size={12} />
+                        </button>
+                        <button onClick={() => deleteTier(index)} className="p-1.5 bg-red-500/10 rounded hover:bg-red-500/20 text-red-400">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-white/5 rounded-xl border border-dashed border-white/20">
+              <Clock size={24} className="mx-auto text-gray-600 mb-2" />
+              <p className="text-gray-400 text-sm">No reward tiers yet</p>
+              <button onClick={addTier} className="mt-2 text-orange-400 hover:text-orange-300 text-sm">+ Add first tier</button>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500 mt-3">
+            Tip: Leave time empty for fallback tier. Tiers are checked fastest-first.
+          </p>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10">Cancel</button>
+          <button onClick={onSave} disabled={saving} className="flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Puzzle Image Modal
+function PuzzleImageModal({ image, onChange, onSave, onClose, saving }: { image: PuzzleImage; onChange: (img: PuzzleImage) => void; onSave: () => void; onClose: () => void; saving: boolean }) {
+  const isNew = image.id === 0;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative bg-[#12121f] rounded-2xl border border-white/10 p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold">{isNew ? 'Add New Puzzle Image' : 'Edit Puzzle Image'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded"><X size={20} /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Name</label>
+            <input type="text" value={image.name} onChange={(e) => onChange({ ...image, name: e.target.value })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" placeholder="Image name" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Image URL</label>
+            <input type="text" value={image.image_url} onChange={(e) => onChange({ ...image, image_url: e.target.value })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" placeholder="https://..." />
+            <p className="text-xs text-gray-500 mt-1">Enter a URL or upload an image after saving</p>
+          </div>
+          {image.image_url && (
+            <div className="rounded-xl overflow-hidden border border-white/10">
+              <img src={image.image_url} alt="Preview" className="w-full aspect-square object-cover" />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
+            <textarea value={image.description || ''} onChange={(e) => onChange({ ...image, description: e.target.value })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white resize-none" rows={2} placeholder="Optional description" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Sort Order</label>
+            <input type="number" value={image.sort_order} onChange={(e) => onChange({ ...image, sort_order: parseInt(e.target.value) || 0 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" />
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <input type="checkbox" id="puzzle_img_featured" checked={image.is_featured} onChange={(e) => onChange({ ...image, is_featured: e.target.checked })} className="w-5 h-5 rounded" />
+              <label htmlFor="puzzle_img_featured" className="flex items-center gap-2">
+                <Star size={16} className={image.is_featured ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400'} />
+                Featured
+              </label>
+            </div>
+            <div className="flex items-center gap-3">
+              <input type="checkbox" id="puzzle_img_active" checked={image.is_active} onChange={(e) => onChange({ ...image, is_active: e.target.checked })} className="w-5 h-5 rounded" />
+              <label htmlFor="puzzle_img_active">Active</label>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10">Cancel</button>
+          <button onClick={onSave} disabled={saving || !image.name || !image.image_url} className="flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} {isNew ? 'Create' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ============ WORD SEARCH COMPONENTS ============
+
+// Word Search Dashboard
+function WordSearchDashboard({ stats, awards }: { stats: { totalGames: number; wins: number; todayGames: number; uniqueUsers: number; avgTime: number }; awards: WordSearchAward[] }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+        <span className="text-3xl">🔍</span> Word Search Dashboard
+      </h2>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Total Games</p>
+          <p className="text-2xl font-bold text-white">{stats.totalGames}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Wins</p>
+          <p className="text-2xl font-bold text-green-400">{stats.wins}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Today</p>
+          <p className="text-2xl font-bold text-cyan-400">{stats.todayGames}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Unique Users</p>
+          <p className="text-2xl font-bold text-purple-400">{stats.uniqueUsers}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Avg Time (wins)</p>
+          <p className="text-2xl font-bold text-yellow-400">{Math.floor(stats.avgTime / 60)}:{(stats.avgTime % 60).toString().padStart(2, '0')}</p>
+        </div>
+      </div>
+      <h3 className="text-lg font-bold mb-4">Recent Games</h3>
+      <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-white/5">
+            <tr>
+              <th className="text-left p-3 text-gray-400 text-sm">User</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Difficulty</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Words</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Time</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {awards.slice(0, 10).map(a => (
+              <tr key={a.id} className="border-t border-white/5">
+                <td className="p-3 text-white">{a.user_name || a.user_id.slice(0, 8)}</td>
+                <td className="p-3"><span className={`px-2 py-1 rounded text-xs ${a.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' : a.difficulty === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>{a.difficulty}</span></td>
+                <td className="p-3 text-white">{a.words_found}/{a.total_words}</td>
+                <td className="p-3 text-white">{Math.floor(a.time_seconds / 60)}:{(a.time_seconds % 60).toString().padStart(2, '0')}</td>
+                <td className="p-3">{a.is_win ? <span className="text-green-400">✓ Won</span> : <span className="text-red-400">✗ Lost</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Word Search Words Component
+function WordSearchWords({ words, onEdit, onDelete, onAddNew }: { words: WordSearchWord[]; onEdit: (w: WordSearchWord) => void; onDelete: (id: number) => void; onAddNew: () => void }) {
+  const easyWords = words.filter(w => w.difficulty === 'easy');
+  const mediumWords = words.filter(w => w.difficulty === 'medium');
+  const hardWords = words.filter(w => w.difficulty === 'hard');
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold flex items-center gap-3">
+          <span className="text-3xl">🔍</span> Word List
+        </h2>
+        <button onClick={onAddNew} className="flex items-center gap-2 px-4 py-2 bg-cyan-500 text-white rounded-xl hover:bg-cyan-600">
+          <Plus size={18} /> Add Word
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Easy Words */}
+        <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+          <h3 className="font-bold text-green-400 mb-3 flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-green-500"></span>
+            Easy ({easyWords.length})
+          </h3>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {easyWords.map(w => (
+              <div key={w.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+                <div>
+                  <span className="text-white font-medium">{w.word}</span>
+                  {w.category && <span className="text-gray-500 text-xs ml-2">({w.category})</span>}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => onEdit(w)} className="p-1.5 hover:bg-white/10 rounded"><Pencil size={14} /></button>
+                  <button onClick={() => onDelete(w.id)} className="p-1.5 hover:bg-red-500/20 rounded text-red-400"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Medium Words */}
+        <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+          <h3 className="font-bold text-yellow-400 mb-3 flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+            Medium ({mediumWords.length})
+          </h3>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {mediumWords.map(w => (
+              <div key={w.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+                <div>
+                  <span className="text-white font-medium">{w.word}</span>
+                  {w.category && <span className="text-gray-500 text-xs ml-2">({w.category})</span>}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => onEdit(w)} className="p-1.5 hover:bg-white/10 rounded"><Pencil size={14} /></button>
+                  <button onClick={() => onDelete(w.id)} className="p-1.5 hover:bg-red-500/20 rounded text-red-400"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Hard Words */}
+        <div className="bg-white/5 rounded-xl border border-white/10 p-4">
+          <h3 className="font-bold text-red-400 mb-3 flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-red-500"></span>
+            Hard ({hardWords.length})
+          </h3>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {hardWords.map(w => (
+              <div key={w.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+                <div>
+                  <span className="text-white font-medium">{w.word}</span>
+                  {w.category && <span className="text-gray-500 text-xs ml-2">({w.category})</span>}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => onEdit(w)} className="p-1.5 hover:bg-white/10 rounded"><Pencil size={14} /></button>
+                  <button onClick={() => onDelete(w.id)} className="p-1.5 hover:bg-red-500/20 rounded text-red-400"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Word Search Configuration Component
+function WordSearchConfiguration({ config, onEdit, rewardTiers }: { config: WordSearchConfig[]; onEdit: (c: WordSearchConfig, tiers: WordSearchRewardTier[]) => void; rewardTiers: WordSearchRewardTier[] }) {
+  const difficultyColors: Record<string, string> = {
+    easy: 'from-green-500 to-emerald-600',
+    medium: 'from-yellow-500 to-orange-600',
+    hard: 'from-red-500 to-pink-600',
+  };
+
+  const getTiersForDifficulty = (difficulty: string) => {
+    return rewardTiers.filter(t => t.difficulty === difficulty);
+  };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+        <Settings size={28} className="text-cyan-400" /> Word Search Configuration
+      </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {config.map(c => {
+          const tiers = getTiersForDifficulty(c.difficulty);
+          return (
+            <div key={c.id} className={`p-6 rounded-xl bg-[#12121f] border ${c.is_active ? 'border-white/10' : 'border-red-500/30 opacity-60'}`}>
+              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${difficultyColors[c.difficulty]} flex items-center justify-center mb-4`}>
+                <Target className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="font-bold text-lg capitalize mb-4">{c.difficulty}</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Grid Size</span>
+                  <span className="font-medium">{c.grid_size}×{c.grid_size}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Words</span>
+                  <span className="font-medium">{c.word_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Time Limit</span>
+                  <span className="font-medium">{c.time_limit_seconds}s</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Reward Tiers</span>
+                  <span className="font-medium text-cyan-400">{tiers.length} tiers</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Status</span>
+                  <span className={`font-medium ${c.is_active ? 'text-green-400' : 'text-red-400'}`}>{c.is_active ? 'Active' : 'Disabled'}</span>
+                </div>
+              </div>
+              {tiers.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-xs text-gray-500 mb-2">Time rewards:</p>
+                  <div className="space-y-1">
+                    {tiers.slice(0, 3).map(t => (
+                      <div key={t.id} className="flex justify-between text-xs">
+                        <span className="text-gray-400">≤{t.max_time_seconds >= 999999 ? '∞' : t.max_time_seconds >= 60 ? `${Math.floor(t.max_time_seconds/60)}m` : `${t.max_time_seconds}s`}</span>
+                        <span><span className="text-yellow-400">+{t.coins_reward}</span> / <span className="text-cyan-400">+{t.xp_reward}XP</span></span>
+                      </div>
+                    ))}
+                    {tiers.length > 3 && <p className="text-xs text-gray-500">+{tiers.length - 3} more...</p>}
+                  </div>
+                </div>
+              )}
+              <button onClick={() => onEdit(c, tiers)} className="w-full mt-4 px-4 py-2 bg-white/5 rounded-lg hover:bg-white/10 flex items-center justify-center gap-2">
+                <Pencil size={16} /> Edit
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-sm">
+        <p className="text-blue-400">
+          <strong>Tip:</strong> Click "Edit" on a difficulty to configure both settings and time-based rewards in one place.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Word Search History Component
+function WordSearchHistory({ awards }: { awards: WordSearchAward[] }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+        <Trophy size={28} className="text-yellow-400" /> Game History
+      </h2>
+      <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-white/5">
+            <tr>
+              <th className="text-left p-3 text-gray-400 text-sm">Date</th>
+              <th className="text-left p-3 text-gray-400 text-sm">User</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Difficulty</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Words Found</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Time</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Result</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Rewards</th>
+            </tr>
+          </thead>
+          <tbody>
+            {awards.map(a => (
+              <tr key={a.id} className="border-t border-white/5">
+                <td className="p-3 text-gray-400 text-sm">{new Date(a.created_at).toLocaleString()}</td>
+                <td className="p-3 text-white">{a.user_name || a.user_id.slice(0, 8)}</td>
+                <td className="p-3"><span className={`px-2 py-1 rounded text-xs ${a.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' : a.difficulty === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>{a.difficulty}</span></td>
+                <td className="p-3 text-white">{a.words_found}/{a.total_words}</td>
+                <td className="p-3 text-white">{Math.floor(a.time_seconds / 60)}:{(a.time_seconds % 60).toString().padStart(2, '0')}</td>
+                <td className="p-3">{a.is_win ? <span className="text-green-400">✓ Won</span> : <span className="text-red-400">✗ Lost</span>}</td>
+                <td className="p-3">
+                  {a.is_win && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-yellow-400 text-sm">+{a.coins_awarded}</span>
+                      <span className="text-cyan-400 text-sm">+{a.xp_awarded} XP</span>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+// Word Search Config Modal
+function WordSearchConfigModal({ config, onChange, tiers, onTiersChange, onSave, onClose, saving }: { config: WordSearchConfig; onChange: (c: WordSearchConfig) => void; tiers: WordSearchRewardTier[]; onTiersChange: (t: WordSearchRewardTier[]) => void; onSave: () => void; onClose: () => void; saving: boolean }) {
+  const [editingTierIndex, setEditingTierIndex] = useState<number | null>(null);
+  const diffColor = config.difficulty === 'easy' ? 'green' : config.difficulty === 'medium' ? 'yellow' : 'red';
+
+  const formatTime = (seconds: number) => {
+    if (seconds >= 999999) return '∞';
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    }
+    return `${seconds}s`;
+  };
+
+  const addTier = () => {
+    const newTier: WordSearchRewardTier = {
+      id: Date.now(),
+      difficulty: config.difficulty,
+      max_time_seconds: 60,
+      coins_reward: 50,
+      xp_reward: 25,
+      tier_name: '',
+      is_active: true,
+    };
+    onTiersChange([...tiers, newTier].sort((a, b) => a.max_time_seconds - b.max_time_seconds));
+  };
+
+  const updateTier = (index: number, updates: Partial<WordSearchRewardTier>) => {
+    const newTiers = [...tiers];
+    newTiers[index] = { ...newTiers[index], ...updates };
+    onTiersChange(newTiers.sort((a, b) => a.max_time_seconds - b.max_time_seconds));
+  };
+
+  const deleteTier = (index: number) => {
+    onTiersChange(tiers.filter((_, i) => i !== index));
+  };
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative bg-[#12121f] rounded-2xl border border-white/10 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className={`text-xl font-bold capitalize text-${diffColor}-400`}>Edit {config.difficulty} Mode</h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded"><X size={20} /></button>
+        </div>
+
+        {/* Basic Settings */}
+        <div className="space-y-4 mb-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Grid Size</label>
+              <input type="number" value={config.grid_size} onChange={(e) => onChange({ ...config, grid_size: parseInt(e.target.value) || 8 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={6} max={15} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Word Count</label>
+              <input type="number" value={config.word_count} onChange={(e) => onChange({ ...config, word_count: parseInt(e.target.value) || 5 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={3} max={20} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Time Limit (seconds)</label>
+            <input type="number" value={config.time_limit_seconds} onChange={(e) => onChange({ ...config, time_limit_seconds: parseInt(e.target.value) || 180 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" />
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="ws_config_active" checked={config.is_active} onChange={(e) => onChange({ ...config, is_active: e.target.checked })} className="w-5 h-5 rounded" />
+            <label htmlFor="ws_config_active">Active</label>
+          </div>
+        </div>
+
+        {/* Time-Based Rewards */}
+        <div className="border-t border-white/10 pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-bold flex items-center gap-2">
+              <Clock size={18} className="text-cyan-400" />
+              Time-Based Rewards
+            </h4>
+            <button onClick={addTier} className="flex items-center gap-1 px-3 py-1.5 bg-cyan-500/20 text-cyan-400 rounded-lg hover:bg-cyan-500/30 text-sm">
+              <Plus size={14} /> Add
+            </button>
+          </div>
+
+          {tiers.length > 0 ? (
+            <div className="space-y-2">
+              {tiers.map((tier, index) => (
+                <div key={index} className="bg-white/5 rounded-xl p-3 border border-white/10">
+                  {editingTierIndex === index ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Time (seconds)</label>
+                          <input 
+                            type="number" 
+                            value={tier.max_time_seconds >= 999999 ? '' : tier.max_time_seconds} 
+                            placeholder="∞"
+                            onChange={(e) => updateTier(index, { max_time_seconds: e.target.value ? parseInt(e.target.value) : 999999 })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Tier Name</label>
+                          <input 
+                            type="text" 
+                            value={tier.tier_name || ''} 
+                            onChange={(e) => updateTier(index, { tier_name: e.target.value })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                            placeholder="e.g., Fast"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Coins</label>
+                          <input 
+                            type="number" 
+                            value={tier.coins_reward} 
+                            onChange={(e) => updateTier(index, { coins_reward: parseInt(e.target.value) || 0 })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">XP</label>
+                          <input 
+                            type="number" 
+                            value={tier.xp_reward} 
+                            onChange={(e) => updateTier(index, { xp_reward: parseInt(e.target.value) || 0 })} 
+                            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm" 
+                          />
+                        </div>
+                      </div>
+                      <button onClick={() => setEditingTierIndex(null)} className="w-full py-2 bg-green-500/20 text-green-400 rounded-lg text-sm hover:bg-green-500/30">
+                        Done
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <span className="text-white font-medium">≤ {formatTime(tier.max_time_seconds)}</span>
+                          {tier.tier_name && <span className="text-gray-400 text-sm ml-2">({tier.tier_name})</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-yellow-400 text-sm">+{tier.coins_reward}</span>
+                        <span className="text-cyan-400 text-sm">+{tier.xp_reward} XP</span>
+                        <button onClick={() => setEditingTierIndex(index)} className="p-1.5 bg-white/5 rounded hover:bg-white/10">
+                          <Pencil size={12} />
+                        </button>
+                        <button onClick={() => deleteTier(index)} className="p-1.5 bg-red-500/10 rounded hover:bg-red-500/20 text-red-400">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-white/5 rounded-xl border border-dashed border-white/20">
+              <Clock size={24} className="mx-auto text-gray-600 mb-2" />
+              <p className="text-gray-400 text-sm">No reward tiers yet</p>
+              <button onClick={addTier} className="mt-2 text-cyan-400 hover:text-cyan-300 text-sm">+ Add first tier</button>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500 mt-3">
+            Tip: Leave time empty for fallback tier. Tiers are checked fastest-first.
+          </p>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10">Cancel</button>
+          <button onClick={onSave} disabled={saving} className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Word Search Word Modal
+function WordSearchWordModal({ word, onChange, onSave, onClose, saving }: { word: WordSearchWord; onChange: (w: WordSearchWord) => void; onSave: () => void; onClose: () => void; saving: boolean }) {
+  const isNew = word.id === 0;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative bg-[#12121f] rounded-2xl border border-white/10 p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold">{isNew ? 'Add New Word' : 'Edit Word'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded"><X size={20} /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Word</label>
+            <input type="text" value={word.word} onChange={(e) => onChange({ ...word, word: e.target.value.toUpperCase() })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white uppercase" placeholder="WORD" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Difficulty</label>
+            <select value={word.difficulty} onChange={(e) => onChange({ ...word, difficulty: e.target.value })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white">
+              <option value="easy">Easy (3-4 letters)</option>
+              <option value="medium">Medium (5-6 letters)</option>
+              <option value="hard">Hard (7+ letters)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Category (optional)</label>
+            <input type="text" value={word.category || ''} onChange={(e) => onChange({ ...word, category: e.target.value })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" placeholder="e.g., animals, food, nature" />
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="word_active" checked={word.is_active} onChange={(e) => onChange({ ...word, is_active: e.target.checked })} className="w-5 h-5 rounded" />
+            <label htmlFor="word_active">Active</label>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10">Cancel</button>
+          <button onClick={onSave} disabled={saving || !word.word} className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} {isNew ? 'Create' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// PACMAN COMPONENTS
+
+// Pacman Dashboard
+function PacmanDashboard({ stats, awards }: { stats: { totalGames: number; wins: number; todayGames: number; uniqueUsers: number; avgScore: number }; awards: PacmanAward[] }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+        <span className="text-3xl">🟡</span> Pac-Man Dashboard
+      </h2>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Total Games</p>
+          <p className="text-2xl font-bold text-white">{stats.totalGames}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Wins</p>
+          <p className="text-2xl font-bold text-green-400">{stats.wins}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Today</p>
+          <p className="text-2xl font-bold text-cyan-400">{stats.todayGames}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Unique Users</p>
+          <p className="text-2xl font-bold text-purple-400">{stats.uniqueUsers}</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-gray-400 text-sm">Avg Score (wins)</p>
+          <p className="text-2xl font-bold text-yellow-400">{stats.avgScore}</p>
+        </div>
+      </div>
+      <h3 className="text-lg font-bold mb-4">Recent Games</h3>
+      <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-white/5">
+            <tr>
+              <th className="text-left p-3 text-gray-400 text-sm">User</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Difficulty</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Score</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Time</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {awards.slice(0, 10).map(a => (
+              <tr key={a.id} className="border-t border-white/5">
+                <td className="p-3 text-white">{a.user_name || a.user_id.slice(0, 8)}</td>
+                <td className="p-3"><span className={`px-2 py-1 rounded text-xs ${a.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' : a.difficulty === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>{a.difficulty}</span></td>
+                <td className="p-3 text-white">{a.score}</td>
+                <td className="p-3 text-white">{Math.floor(a.time_seconds / 60)}:{(a.time_seconds % 60).toString().padStart(2, '0')}</td>
+                <td className="p-3">{a.is_win ? <span className="text-green-400">✓ Won</span> : <span className="text-red-400">✗ Lost</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Pacman Configuration Component
+function PacmanConfiguration({ config, onEdit }: { config: PacmanConfig[]; onEdit: (c: PacmanConfig) => void }) {
+  const difficultyColors: Record<string, string> = {
+    easy: 'from-green-500 to-emerald-600',
+    medium: 'from-yellow-500 to-orange-600',
+    hard: 'from-red-500 to-pink-600',
+  };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+        <Settings size={28} className="text-yellow-400" /> Pac-Man Configuration
+      </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {config.map(c => (
+          <div key={c.id} className={`p-6 rounded-xl bg-[#12121f] border ${c.is_active ? 'border-white/10' : 'border-red-500/30 opacity-60'}`}>
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${difficultyColors[c.difficulty]} flex items-center justify-center mb-4`}>
+              <Target className="w-6 h-6 text-white" />
+            </div>
+            <h3 className="font-bold text-lg capitalize mb-4">{c.difficulty}</h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Ghosts</span>
+                <span className="font-medium">{c.ghost_count}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Ghost Speed</span>
+                <span className="font-medium">{c.ghost_speed}ms</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Pacman Speed</span>
+                <span className="font-medium">{c.pacman_speed}ms</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Time Limit</span>
+                <span className="font-medium">{c.time_limit_seconds}s</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Coins Reward</span>
+                <span className="font-medium text-yellow-400">+{c.coins_reward}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">XP Reward</span>
+                <span className="font-medium text-cyan-400">+{c.xp_reward}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Status</span>
+                <span className={`font-medium ${c.is_active ? 'text-green-400' : 'text-red-400'}`}>{c.is_active ? 'Active' : 'Disabled'}</span>
+              </div>
+            </div>
+            <button onClick={() => onEdit(c)} className="w-full mt-4 px-4 py-2 bg-white/5 rounded-lg hover:bg-white/10 flex items-center justify-center gap-2">
+              <Pencil size={16} /> Edit
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-sm">
+        <p className="text-blue-400">
+          <strong>Note:</strong> Ghost speed is in milliseconds - higher values = slower ghosts. Pacman speed works the same way.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Pacman History Component
+function PacmanHistory({ awards }: { awards: PacmanAward[] }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+        <Trophy size={28} className="text-yellow-400" /> Game History
+      </h2>
+      <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden overflow-x-auto">
+        <table className="w-full min-w-[800px]">
+          <thead className="bg-white/5">
+            <tr>
+              <th className="text-left p-3 text-gray-400 text-sm">Date</th>
+              <th className="text-left p-3 text-gray-400 text-sm">User</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Difficulty</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Score</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Dots</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Ghosts Eaten</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Time</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Result</th>
+              <th className="text-left p-3 text-gray-400 text-sm">Rewards</th>
+            </tr>
+          </thead>
+          <tbody>
+            {awards.map(a => (
+              <tr key={a.id} className="border-t border-white/5">
+                <td className="p-3 text-gray-400 text-sm">{new Date(a.created_at).toLocaleString()}</td>
+                <td className="p-3 text-white">{a.user_name || a.user_id.slice(0, 8)}</td>
+                <td className="p-3"><span className={`px-2 py-1 rounded text-xs ${a.difficulty === 'easy' ? 'bg-green-500/20 text-green-400' : a.difficulty === 'medium' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>{a.difficulty}</span></td>
+                <td className="p-3 text-white font-medium">{a.score}</td>
+                <td className="p-3 text-white">{a.dots_eaten}/{a.total_dots}</td>
+                <td className="p-3 text-white">{a.ghosts_eaten}</td>
+                <td className="p-3 text-white">{Math.floor(a.time_seconds / 60)}:{(a.time_seconds % 60).toString().padStart(2, '0')}</td>
+                <td className="p-3">{a.is_win ? <span className="text-green-400">✓ Won</span> : <span className="text-red-400">✗ Lost</span>}</td>
+                <td className="p-3">
+                  {a.is_win && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-yellow-400 text-sm">+{a.coins_awarded}</span>
+                      <span className="text-cyan-400 text-sm">+{a.xp_awarded} XP</span>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Pacman Config Modal
+function PacmanConfigModal({ config, onChange, onSave, onClose, saving }: { config: PacmanConfig; onChange: (c: PacmanConfig) => void; onSave: () => void; onClose: () => void; saving: boolean }) {
+  const diffColor = config.difficulty === 'easy' ? 'green' : config.difficulty === 'medium' ? 'yellow' : 'red';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative bg-[#12121f] rounded-2xl border border-white/10 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className={`text-xl font-bold capitalize text-${diffColor}-400`}>Edit {config.difficulty} Mode</h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded"><X size={20} /></button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Ghost Count</label>
+              <input type="number" value={config.ghost_count} onChange={(e) => onChange({ ...config, ghost_count: parseInt(e.target.value) || 2 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={1} max={6} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Ghost Speed (ms)</label>
+              <input type="number" value={config.ghost_speed} onChange={(e) => onChange({ ...config, ghost_speed: parseInt(e.target.value) || 300 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={100} max={1000} />
+              <p className="text-xs text-gray-500 mt-1">Higher = slower</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Pacman Speed (ms)</label>
+              <input type="number" value={config.pacman_speed} onChange={(e) => onChange({ ...config, pacman_speed: parseInt(e.target.value) || 120 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={50} max={500} />
+              <p className="text-xs text-gray-500 mt-1">Higher = slower</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Time Limit (seconds)</label>
+              <input type="number" value={config.time_limit_seconds} onChange={(e) => onChange({ ...config, time_limit_seconds: parseInt(e.target.value) || 120 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={30} max={600} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Coins Reward</label>
+              <input type="number" value={config.coins_reward} onChange={(e) => onChange({ ...config, coins_reward: parseInt(e.target.value) || 50 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={0} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">XP Reward</label>
+              <input type="number" value={config.xp_reward} onChange={(e) => onChange({ ...config, xp_reward: parseInt(e.target.value) || 25 })} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white" min={0} />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="pacman_config_active" checked={config.is_active} onChange={(e) => onChange({ ...config, is_active: e.target.checked })} className="w-5 h-5 rounded" />
+            <label htmlFor="pacman_config_active">Active</label>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10">Cancel</button>
+          <button onClick={onSave} disabled={saving} className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Save
           </button>
         </div>
       </div>

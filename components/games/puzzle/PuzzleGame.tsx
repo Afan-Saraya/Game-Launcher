@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, RotateCcw, Clock, Target, Trophy, Puzzle, Check, Play } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Clock, Target, Trophy, Puzzle, Check } from 'lucide-react';
 import PuzzleWinModal from './PuzzleWinModal';
 import LoadingScreen from '@/components/shared/LoadingScreen';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchPuzzleConfig, getRandomPuzzleImage, fetchPuzzleRewardTiers, getRewardForTime, PuzzleConfigDb, PuzzleImageDb, PuzzleRewardTierDb } from '@/lib/supabase';
 
 type Difficulty = 'easy' | 'medium' | 'hard';
 
@@ -19,12 +21,17 @@ interface PuzzlePiece {
   currentPosition: number | null;
 }
 
-// Default puzzle image
-const PUZZLE_IMAGE = 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=600&h=600&fit=crop';
+// Default puzzle image fallback
+const DEFAULT_PUZZLE_IMAGE = 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=600&h=600&fit=crop';
 
-const PREVIEW_TIME = 3; // seconds to show the image before splitting
+const DEFAULT_CONFIG: Record<Difficulty, { coins: number; xp: number; preview: number }> = {
+  easy: { coins: 50, xp: 25, preview: 5 },
+  medium: { coins: 100, xp: 50, preview: 4 },
+  hard: { coins: 200, xp: 100, preview: 3 },
+};
 
 export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameProps) {
+  const { user } = useAuth();
   const [pieces, setPieces] = useState<PuzzlePiece[]>([]);
   const [board, setBoard] = useState<(number | null)[]>([]);
   const [moves, setMoves] = useState(0);
@@ -34,34 +41,96 @@ export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameP
   const [showWinModal, setShowWinModal] = useState(false);
   const [selectedPiece, setSelectedPiece] = useState<number | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
-  
+  const [dataLoaded, setDataLoaded] = useState(false);
+
   // Preview phase states
   const [isPreviewPhase, setIsPreviewPhase] = useState(true);
-  const [previewCountdown, setPreviewCountdown] = useState(PREVIEW_TIME);
-  const [hasStarted, setHasStarted] = useState(false);
+  const [previewCountdown, setPreviewCountdown] = useState(3);
+
+  // Database config and image
+  const [config, setConfig] = useState<PuzzleConfigDb | null>(null);
+  const [puzzleImage, setPuzzleImage] = useState<PuzzleImageDb | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [rewardTiers, setRewardTiers] = useState<PuzzleRewardTierDb[]>([]);
 
   const totalPieces = gridSize * gridSize;
 
+  // Get rewards based on time from tiers, or fallback to config/defaults
+  const getRewards = (timeSeconds: number) => {
+    if (rewardTiers.length > 0) {
+      return getRewardForTime(rewardTiers, timeSeconds);
+    }
+    // Fallback to config or defaults
+    return {
+      coins: config?.coins_reward ?? DEFAULT_CONFIG[difficulty].coins,
+      xp: config?.xp_reward ?? DEFAULT_CONFIG[difficulty].xp,
+      tierName: 'Completed',
+    };
+  };
+
+  const previewTime = config?.preview_seconds ?? DEFAULT_CONFIG[difficulty].preview;
+
+  // Fetch config, random image, and reward tiers on mount - then auto-start
   useEffect(() => {
-    // Preload image
+    const loadData = async () => {
+      const [configs, randomImage, tiers] = await Promise.all([
+        fetchPuzzleConfig(),
+        getRandomPuzzleImage(),
+        fetchPuzzleRewardTiers(difficulty),
+      ]);
+      
+      const diffConfig = configs.find(c => c.difficulty === difficulty);
+      if (diffConfig) {
+        setConfig(diffConfig);
+        setPreviewCountdown(diffConfig.preview_seconds ?? DEFAULT_CONFIG[difficulty].preview);
+      } else {
+        setPreviewCountdown(DEFAULT_CONFIG[difficulty].preview);
+      }
+      
+      if (randomImage) {
+        setPuzzleImage(randomImage);
+        setCurrentImageUrl(randomImage.image_url);
+      } else {
+        // Use fallback if no images in database
+        setCurrentImageUrl(DEFAULT_PUZZLE_IMAGE);
+      }
+      
+      setRewardTiers(tiers);
+      setDataLoaded(true);
+    };
+    loadData();
+  }, [difficulty]);
+
+  // Preload image only after data is loaded
+  useEffect(() => {
+    if (!dataLoaded || !currentImageUrl) return;
+    
+    setImageLoaded(false);
     const img = new Image();
     img.onload = () => setImageLoaded(true);
-    img.src = PUZZLE_IMAGE;
-  }, []);
+    img.onerror = () => {
+      // Fallback to default if image fails to load
+      if (currentImageUrl !== DEFAULT_PUZZLE_IMAGE) {
+        setCurrentImageUrl(DEFAULT_PUZZLE_IMAGE);
+      } else {
+        setImageLoaded(true);
+      }
+    };
+    img.src = currentImageUrl;
+  }, [dataLoaded, currentImageUrl]);
 
   // Preview countdown
   useEffect(() => {
-    if (!hasStarted || !isPreviewPhase || !imageLoaded) return;
+    if (!isPreviewPhase || !imageLoaded || !dataLoaded) return;
     
     if (previewCountdown > 0) {
       const timer = setTimeout(() => setPreviewCountdown(prev => prev - 1), 1000);
       return () => clearTimeout(timer);
     } else {
-      // End preview phase and initialize puzzle
       setIsPreviewPhase(false);
       initializePuzzle();
     }
-  }, [previewCountdown, isPreviewPhase, hasStarted, imageLoaded]);
+  }, [previewCountdown, isPreviewPhase, imageLoaded, dataLoaded]);
 
   // Game timer
   useEffect(() => {
@@ -94,10 +163,21 @@ export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameP
     setBoard(Array(totalPieces).fill(null));
   };
 
-  const startGame = () => {
-    setHasStarted(true);
-    setPreviewCountdown(PREVIEW_TIME);
+  const restartGame = async () => {
+    setDataLoaded(false);
+    setImageLoaded(false);
+    
+    // Get a new random image for restart
+    const randomImage = await getRandomPuzzleImage();
+    if (randomImage) {
+      setPuzzleImage(randomImage);
+      setCurrentImageUrl(randomImage.image_url);
+    } else {
+      setCurrentImageUrl(DEFAULT_PUZZLE_IMAGE);
+    }
+    
     setIsPreviewPhase(true);
+    setPreviewCountdown(previewTime);
     setMoves(0);
     setTime(0);
     setIsRunning(false);
@@ -106,20 +186,7 @@ export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameP
     setSelectedPiece(null);
     setPieces([]);
     setBoard([]);
-  };
-
-  const restartGame = () => {
-    setHasStarted(false);
-    setIsPreviewPhase(true);
-    setPreviewCountdown(PREVIEW_TIME);
-    setMoves(0);
-    setTime(0);
-    setIsRunning(false);
-    setIsWon(false);
-    setShowWinModal(false);
-    setSelectedPiece(null);
-    setPieces([]);
-    setBoard([]);
+    setDataLoaded(true);
   };
 
   const checkWin = useCallback((currentBoard: (number | null)[]) => {
@@ -259,7 +326,7 @@ export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameP
           isSelected ? 'ring-2 ring-orange-500 ring-offset-2 ring-offset-[#1a1030] scale-105' : ''
         } ${isCorrect ? 'ring-2 ring-green-500' : ''}`}
         style={{
-          backgroundImage: `url(${PUZZLE_IMAGE})`,
+          backgroundImage: `url(${currentImageUrl})`,
           backgroundSize: `${gridSize * 100}% ${gridSize * 100}%`,
           backgroundPosition: `${(col / (gridSize - 1)) * 100}% ${(row / (gridSize - 1)) * 100}%`,
         }}
@@ -267,52 +334,12 @@ export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameP
     );
   };
 
-  // Loading state
-  if (!imageLoaded) {
+  // Loading state - wait for both data and image to load
+  if (!dataLoaded || !imageLoaded || !currentImageUrl) {
     return <LoadingScreen message="Loading puzzle..." />;
   }
 
-  // Pre-game state - show image and start button
-  if (!hasStarted) {
-    return (
-      <main className="h-[100dvh] lg:min-h-screen flex flex-col items-center justify-center px-4 py-6">
-        <div className="w-full max-w-md text-center">
-          <div className="flex items-center gap-3 justify-center mb-6">
-            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${difficultyBg} flex items-center justify-center`}>
-              <Puzzle size={24} className="text-white" />
-            </div>
-            <div className="text-left">
-              <h1 className="text-2xl font-bold text-white">Puzzle Challenge</h1>
-              <span className={`text-sm font-medium ${difficultyColor}`}>{difficultyLabel} • {gridSize}×{gridSize}</span>
-            </div>
-          </div>
-
-          <p className="text-white/60 mb-4">Memorize this image, then piece it back together!</p>
-
-          <div className="rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl mb-6">
-            <img src={PUZZLE_IMAGE} alt="Puzzle" className="w-full aspect-square object-cover" />
-          </div>
-
-          <button
-            onClick={startGame}
-            className="flex items-center justify-center gap-3 w-full px-8 py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold text-lg rounded-2xl hover:from-orange-400 hover:to-red-400 transition-all shadow-lg hover:scale-105"
-          >
-            <Play size={24} />
-            Start Puzzle
-          </button>
-
-          <button
-            onClick={onBack}
-            className="mt-4 text-white/50 hover:text-white/70 transition-colors"
-          >
-            ← Back to menu
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  // Preview countdown phase
+  // Preview countdown phase - shows immediately after selecting difficulty
   if (isPreviewPhase) {
     return (
       <main className="h-[100dvh] lg:min-h-screen flex flex-col items-center justify-center px-4 py-6">
@@ -326,7 +353,7 @@ export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameP
           </div>
 
           <div className="rounded-2xl overflow-hidden border-2 border-orange-500/50 shadow-2xl animate-pulse">
-            <img src={PUZZLE_IMAGE} alt="Puzzle" className="w-full aspect-square object-cover" />
+            <img src={currentImageUrl} alt="Puzzle" className="w-full aspect-square object-cover" />
           </div>
         </div>
       </main>
@@ -600,6 +627,12 @@ export default function PuzzleGame({ difficulty, gridSize, onBack }: PuzzleGameP
         time={time}
         difficulty={difficulty}
         gridSize={gridSize}
+        coins={getRewards(time).coins}
+        xp={getRewards(time).xp}
+        tierName={getRewards(time).tierName}
+        userName={user?.name}
+        userId={user?.id}
+        puzzleImageId={puzzleImage?.id}
       />
     </>
   );

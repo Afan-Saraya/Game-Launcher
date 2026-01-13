@@ -343,3 +343,820 @@ export const fetchAllMemoryCards = async (): Promise<MemoryCardDb[]> => {
     return [];
   }
 };
+
+
+// ============ PUZZLE GAME FUNCTIONS ============
+
+export interface PuzzleConfigDb {
+  id: number;
+  difficulty: string;
+  grid_size: number;
+  preview_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  is_active: boolean;
+}
+
+export interface PuzzleAwardDb {
+  id: string;
+  user_id: string;
+  user_name: string | null;
+  difficulty: string;
+  grid_size: number;
+  moves: number;
+  time_seconds: number;
+  puzzle_image_id: number | null;
+  is_win: boolean;
+  coins_awarded: number;
+  xp_awarded: number;
+  created_at: string;
+}
+
+export interface PuzzleImageDb {
+  id: number;
+  name: string;
+  image_url: string;
+  description: string | null;
+  is_featured: boolean;
+  is_active: boolean;
+  sort_order: number;
+  times_played: number;
+  times_solved: number;
+}
+
+export const fetchPuzzleConfig = async (): Promise<PuzzleConfigDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('puzzle_config')
+      .select('*')
+      .order('id');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching puzzle config:', error);
+    return [];
+  }
+};
+
+export const fetchPuzzleImages = async (featuredOnly = false): Promise<PuzzleImageDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    let query = supabase
+      .from('puzzle_images')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order');
+    
+    if (featuredOnly) {
+      query = query.eq('is_featured', true);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching puzzle images:', error);
+    return [];
+  }
+};
+
+export const getRandomPuzzleImage = async (): Promise<PuzzleImageDb | null> => {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  
+  try {
+    const { data, error } = await supabase
+      .from('puzzle_images')
+      .select('*')
+      .eq('is_active', true);
+    
+    if (error) throw error;
+    if (!data || data.length === 0) return null;
+    
+    // Return a random image
+    const randomIndex = Math.floor(Math.random() * data.length);
+    return data[randomIndex];
+  } catch (error) {
+    console.error('Error fetching random puzzle image:', error);
+    return null;
+  }
+};
+
+export const savePuzzleAward = async (award: {
+  userId: string;
+  userName?: string;
+  difficulty: string;
+  gridSize: number;
+  moves: number;
+  timeSeconds: number;
+  puzzleImageId?: number;
+  isWin: boolean;
+  coinsAwarded: number;
+  xpAwarded: number;
+}): Promise<boolean> => {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  
+  try {
+    const { error } = await supabase
+      .from('puzzle_awards')
+      .insert({
+        user_id: award.userId,
+        user_name: award.userName || null,
+        difficulty: award.difficulty,
+        grid_size: award.gridSize,
+        moves: award.moves,
+        time_seconds: award.timeSeconds,
+        puzzle_image_id: award.puzzleImageId || null,
+        is_win: award.isWin,
+        coins_awarded: award.coinsAwarded,
+        xp_awarded: award.xpAwarded,
+      });
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error saving puzzle award:', error);
+    return false;
+  }
+};
+
+export const updatePuzzleImageStats = async (imageId: number, solved: boolean): Promise<void> => {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  
+  try {
+    // Increment times_played, and times_solved if solved
+    const { data: current } = await supabase
+      .from('puzzle_images')
+      .select('times_played, times_solved')
+      .eq('id', imageId)
+      .single();
+    
+    if (current) {
+      await supabase
+        .from('puzzle_images')
+        .update({
+          times_played: (current.times_played || 0) + 1,
+          times_solved: solved ? (current.times_solved || 0) + 1 : current.times_solved,
+        })
+        .eq('id', imageId);
+    }
+  } catch (error) {
+    console.error('Error updating puzzle image stats:', error);
+  }
+};
+
+
+// ============ PUZZLE REWARD TIERS ============
+
+export interface PuzzleRewardTierDb {
+  id: number;
+  difficulty: string;
+  max_time_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  tier_name: string | null;
+  is_active: boolean;
+}
+
+export const fetchPuzzleRewardTiers = async (difficulty?: string): Promise<PuzzleRewardTierDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    let query = supabase
+      .from('puzzle_reward_tiers')
+      .select('*')
+      .eq('is_active', true)
+      .order('max_time_seconds', { ascending: true });
+    
+    if (difficulty) {
+      query = query.eq('difficulty', difficulty);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching puzzle reward tiers:', error);
+    return [];
+  }
+};
+
+export const getRewardForTime = (tiers: PuzzleRewardTierDb[], timeSeconds: number): { coins: number; xp: number; tierName: string } => {
+  // Find the first tier where time is less than or equal to max_time_seconds
+  const tier = tiers.find(t => timeSeconds <= t.max_time_seconds);
+  
+  if (tier) {
+    return {
+      coins: tier.coins_reward,
+      xp: tier.xp_reward,
+      tierName: tier.tier_name || 'Completed',
+    };
+  }
+  
+  // Fallback to last tier or default
+  const lastTier = tiers[tiers.length - 1];
+  return {
+    coins: lastTier?.coins_reward || 25,
+    xp: lastTier?.xp_reward || 10,
+    tierName: lastTier?.tier_name || 'Completed',
+  };
+};
+
+
+// ============ PUZZLE DAILY LIMITS ============
+
+// Get CET midnight timestamp for today (reusing the wheel logic)
+export const getPuzzleCETMidnight = (): Date => {
+  const now = new Date();
+  const cetOffset = 1; // CET is UTC+1
+  const utcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  utcMidnight.setUTCHours(utcMidnight.getUTCHours() - cetOffset);
+  return utcMidnight;
+};
+
+// Count puzzle plays for a user today (resets at 00:00 CET)
+export const getTodayPuzzlePlayCount = async (userId: string): Promise<number> => {
+  const supabase = getSupabase();
+  if (!supabase) return 0;
+  
+  try {
+    const cetMidnight = getPuzzleCETMidnight();
+    
+    const { count, error } = await supabase
+      .from('puzzle_awards')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_win', true)
+      .gte('created_at', cetMidnight.toISOString());
+    
+    if (error) throw error;
+    return count || 0;
+  } catch (error) {
+    console.error('Error counting puzzle plays:', error);
+    return 0;
+  }
+};
+
+// Get time until next reset (00:00 CET)
+export const getPuzzleTimeUntilReset = (): { hours: number; minutes: number; seconds: number } => {
+  const now = new Date();
+  const cetOffset = 1;
+  
+  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  tomorrow.setUTCHours(tomorrow.getUTCHours() - cetOffset);
+  
+  const cetMidnight = getPuzzleCETMidnight();
+  const targetTime = now >= cetMidnight ? tomorrow : cetMidnight;
+  
+  const diff = targetTime.getTime() - now.getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  
+  return { hours, minutes, seconds };
+};
+
+
+// ============ WORD SEARCH GAME FUNCTIONS ============
+
+export interface WordSearchConfigDb {
+  id: number;
+  difficulty: string;
+  grid_size: number;
+  word_count: number;
+  time_limit_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  is_active: boolean;
+}
+
+export interface WordSearchAwardDb {
+  id: string;
+  user_id: string;
+  user_name: string | null;
+  difficulty: string;
+  words_found: number;
+  total_words: number;
+  time_seconds: number;
+  is_win: boolean;
+  coins_awarded: number;
+  xp_awarded: number;
+  created_at: string;
+}
+
+export interface WordSearchWordDb {
+  id: number;
+  word: string;
+  difficulty: string;
+  category: string | null;
+  is_active: boolean;
+}
+
+export const fetchWordSearchConfig = async (): Promise<WordSearchConfigDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('wordsearch_config')
+      .select('*')
+      .order('id');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching word search config:', error);
+    return [];
+  }
+};
+
+export const fetchWordSearchWords = async (difficulty?: string): Promise<WordSearchWordDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    let query = supabase
+      .from('wordsearch_words')
+      .select('*')
+      .eq('is_active', true)
+      .order('word');
+    
+    if (difficulty) {
+      query = query.eq('difficulty', difficulty);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching word search words:', error);
+    return [];
+  }
+};
+
+export const fetchAllWordSearchWords = async (): Promise<WordSearchWordDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('wordsearch_words')
+      .select('*')
+      .order('difficulty')
+      .order('word');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching all word search words:', error);
+    return [];
+  }
+};
+
+export const saveWordSearchAward = async (award: {
+  userId: string;
+  userName?: string;
+  difficulty: string;
+  wordsFound: number;
+  totalWords: number;
+  timeSeconds: number;
+  isWin: boolean;
+  coinsAwarded: number;
+  xpAwarded: number;
+}): Promise<boolean> => {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  
+  try {
+    const { error } = await supabase
+      .from('wordsearch_awards')
+      .insert({
+        user_id: award.userId,
+        user_name: award.userName || null,
+        difficulty: award.difficulty,
+        words_found: award.wordsFound,
+        total_words: award.totalWords,
+        time_seconds: award.timeSeconds,
+        is_win: award.isWin,
+        coins_awarded: award.coinsAwarded,
+        xp_awarded: award.xpAwarded,
+      });
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error saving word search award:', error);
+    return false;
+  }
+};
+
+export const fetchWordSearchAwards = async (limit = 100): Promise<WordSearchAwardDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('wordsearch_awards')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching word search awards:', error);
+    return [];
+  }
+};
+
+
+// ============ WORD SEARCH REWARD TIERS ============
+
+export interface WordSearchRewardTierDb {
+  id: number;
+  difficulty: string;
+  max_time_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  tier_name: string | null;
+  is_active: boolean;
+}
+
+export const fetchWordSearchRewardTiers = async (difficulty?: string): Promise<WordSearchRewardTierDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    let query = supabase
+      .from('wordsearch_reward_tiers')
+      .select('*')
+      .eq('is_active', true)
+      .order('max_time_seconds', { ascending: true });
+    
+    if (difficulty) {
+      query = query.eq('difficulty', difficulty);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching word search reward tiers:', error);
+    return [];
+  }
+};
+
+export const getWordSearchRewardForTime = (tiers: WordSearchRewardTierDb[], timeSeconds: number): { coins: number; xp: number; tierName: string } => {
+  const tier = tiers.find(t => timeSeconds <= t.max_time_seconds);
+  
+  if (tier) {
+    return {
+      coins: tier.coins_reward,
+      xp: tier.xp_reward,
+      tierName: tier.tier_name || 'Completed',
+    };
+  }
+  
+  const lastTier = tiers[tiers.length - 1];
+  return {
+    coins: lastTier?.coins_reward || 25,
+    xp: lastTier?.xp_reward || 10,
+    tierName: lastTier?.tier_name || 'Completed',
+  };
+};
+
+
+// ============ MEMORY DAILY LIMITS ============
+
+export const getMemoryCETMidnight = (): Date => {
+  const now = new Date();
+  const cetOffset = 1;
+  const utcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  utcMidnight.setUTCHours(utcMidnight.getUTCHours() - cetOffset);
+  return utcMidnight;
+};
+
+export const getTodayMemoryPlayCount = async (userId: string): Promise<number> => {
+  const supabase = getSupabase();
+  if (!supabase) return 0;
+  
+  try {
+    const cetMidnight = getMemoryCETMidnight();
+    
+    const { count, error } = await supabase
+      .from('memory_awards')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_win', true)
+      .gte('created_at', cetMidnight.toISOString());
+    
+    if (error) throw error;
+    return count || 0;
+  } catch (error) {
+    console.error('Error counting memory plays:', error);
+    return 0;
+  }
+};
+
+export const getMemoryTimeUntilReset = (): { hours: number; minutes: number; seconds: number } => {
+  const now = new Date();
+  const cetOffset = 1;
+  
+  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  tomorrow.setUTCHours(tomorrow.getUTCHours() - cetOffset);
+  
+  const cetMidnight = getMemoryCETMidnight();
+  const targetTime = now >= cetMidnight ? tomorrow : cetMidnight;
+  
+  const diff = targetTime.getTime() - now.getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  
+  return { hours, minutes, seconds };
+};
+
+
+// ============ WORD SEARCH DAILY LIMITS ============
+
+export const getWordSearchCETMidnight = (): Date => {
+  const now = new Date();
+  const cetOffset = 1;
+  const utcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  utcMidnight.setUTCHours(utcMidnight.getUTCHours() - cetOffset);
+  return utcMidnight;
+};
+
+export const getTodayWordSearchPlayCount = async (userId: string): Promise<number> => {
+  const supabase = getSupabase();
+  if (!supabase) return 0;
+  
+  try {
+    const cetMidnight = getWordSearchCETMidnight();
+    
+    const { count, error } = await supabase
+      .from('wordsearch_awards')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_win', true)
+      .gte('created_at', cetMidnight.toISOString());
+    
+    if (error) throw error;
+    return count || 0;
+  } catch (error) {
+    console.error('Error counting word search plays:', error);
+    return 0;
+  }
+};
+
+export const getWordSearchTimeUntilReset = (): { hours: number; minutes: number; seconds: number } => {
+  const now = new Date();
+  const cetOffset = 1;
+  
+  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  tomorrow.setUTCHours(tomorrow.getUTCHours() - cetOffset);
+  
+  const cetMidnight = getWordSearchCETMidnight();
+  const targetTime = now >= cetMidnight ? tomorrow : cetMidnight;
+  
+  const diff = targetTime.getTime() - now.getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  
+  return { hours, minutes, seconds };
+};
+
+
+// ============ RECENT WINNERS FETCH FUNCTIONS ============
+
+export const fetchRecentMemoryWinners = async (limit = 15): Promise<MemoryAwardDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('memory_awards')
+      .select('*')
+      .eq('is_win', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching memory winners:', error);
+    return [];
+  }
+};
+
+export const fetchRecentPuzzleWinners = async (limit = 15): Promise<PuzzleAwardDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('puzzle_awards')
+      .select('*')
+      .eq('is_win', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching puzzle winners:', error);
+    return [];
+  }
+};
+
+export const fetchRecentWordSearchWinners = async (limit = 15): Promise<WordSearchAwardDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('wordsearch_awards')
+      .select('*')
+      .eq('is_win', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching word search winners:', error);
+    return [];
+  }
+};
+
+
+// ============ PACMAN GAME ============
+
+export interface PacmanConfigDb {
+  id: number;
+  difficulty: string;
+  ghost_count: number;
+  ghost_speed: number;
+  pacman_speed: number;
+  time_limit_seconds: number;
+  coins_reward: number;
+  xp_reward: number;
+  is_active: boolean;
+}
+
+export interface PacmanAwardDb {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  difficulty: string;
+  score: number;
+  dots_eaten: number;
+  total_dots: number;
+  ghosts_eaten: number;
+  time_seconds: number;
+  is_win: boolean;
+  coins_awarded: number;
+  xp_awarded: number;
+  created_at: string;
+}
+
+export const fetchPacmanConfig = async (): Promise<PacmanConfigDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('pacman_config')
+      .select('*')
+      .eq('is_active', true)
+      .order('difficulty');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching pacman config:', error);
+    return [];
+  }
+};
+
+export const savePacmanAward = async (award: {
+  userId: string;
+  userName?: string;
+  difficulty: string;
+  score: number;
+  dotsEaten: number;
+  totalDots: number;
+  ghostsEaten: number;
+  timeSeconds: number;
+  isWin: boolean;
+  coinsAwarded: number;
+  xpAwarded: number;
+}): Promise<boolean> => {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  
+  try {
+    const { error } = await supabase
+      .from('pacman_awards')
+      .insert({
+        user_id: award.userId,
+        user_name: award.userName || null,
+        difficulty: award.difficulty,
+        score: award.score,
+        dots_eaten: award.dotsEaten,
+        total_dots: award.totalDots,
+        ghosts_eaten: award.ghostsEaten,
+        time_seconds: award.timeSeconds,
+        is_win: award.isWin,
+        coins_awarded: award.coinsAwarded,
+        xp_awarded: award.xpAwarded,
+      });
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error saving pacman award:', error);
+    return false;
+  }
+};
+
+export const fetchRecentPacmanWinners = async (limit = 15): Promise<PacmanAwardDb[]> => {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  
+  try {
+    const { data, error } = await supabase
+      .from('pacman_awards')
+      .select('*')
+      .eq('is_win', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching pacman winners:', error);
+    return [];
+  }
+};
+
+const getPacmanCETMidnight = (): Date => {
+  const now = new Date();
+  const cetOffset = 1;
+  const utcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  utcMidnight.setUTCHours(utcMidnight.getUTCHours() - cetOffset);
+  return utcMidnight;
+};
+
+export const getTodayPacmanPlayCount = async (userId: string): Promise<number> => {
+  const supabase = getSupabase();
+  if (!supabase) return 0;
+  
+  try {
+    const cetMidnight = getPacmanCETMidnight();
+    
+    const { count, error } = await supabase
+      .from('pacman_awards')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', cetMidnight.toISOString());
+    
+    if (error) throw error;
+    return count || 0;
+  } catch (error) {
+    console.error('Error counting pacman plays:', error);
+    return 0;
+  }
+};
+
+export const getPacmanTimeUntilReset = (): { hours: number; minutes: number; seconds: number } => {
+  const now = new Date();
+  const cetOffset = 1;
+  
+  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  tomorrow.setUTCHours(tomorrow.getUTCHours() - cetOffset);
+  
+  const cetMidnight = getPacmanCETMidnight();
+  const targetTime = now >= cetMidnight ? tomorrow : cetMidnight;
+  
+  const diff = targetTime.getTime() - now.getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+  
+  return { hours, minutes, seconds };
+};

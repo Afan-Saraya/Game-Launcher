@@ -10,12 +10,24 @@ export interface Prize {
   xp_reward: number;
 }
 
+export interface GameInfo {
+  howToPlay: string[];
+  rewards: {
+    coins: { min: number; max: number };
+    xp: { min: number; max: number };
+  };
+  difficulties?: string[];
+  features?: string[];
+}
+
 export interface GameCardProps {
   title: string;
   description: string;
-  icon: string;
+  icon: string | React.ReactNode;
   route: string;
   disabled?: boolean;
+  gradient?: string;
+  gameInfo?: GameInfo;
 }
 
 export interface BalancePillProps {
